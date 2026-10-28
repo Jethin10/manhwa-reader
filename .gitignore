@@ -21,6 +21,8 @@
 /build
 
 # misc
+.source-research/
+artifacts/
 .DS_Store
 *.pem
 

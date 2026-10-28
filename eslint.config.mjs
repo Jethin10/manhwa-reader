@@ -7,6 +7,8 @@ const eslintConfig = defineConfig([
   ...nextTs,
   // Override default ignores of eslint-config-next.
   globalIgnores([
+    ".source-research/**",
+    "artifacts/**",
     // Default ignores of eslint-config-next:
     ".next/**",
     "out/**",
