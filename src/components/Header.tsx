@@ -1,71 +1,117 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { SearchBox } from "./SearchBox";
+import { BooksIcon, GearIcon, GridIcon, HouseIcon, MagnifierIcon, PlayRectIcon } from "./Icons";
 
+const NAV = [
+  { href: "/", label: "Home" },
+  { href: "/series", label: "Manhwa" },
+  { href: "/manga", label: "Manga" },
+  { href: "/anime", label: "Anime" },
+  { href: "/bookmarks", label: "Library" },
+];
+
+const TABS = [
+  { href: "/", label: "Home", Icon: HouseIcon, match: (p: string) => p === "/" },
+  {
+    href: "/series",
+    label: "Browse",
+    Icon: GridIcon,
+    match: (p: string) => p.startsWith("/series") || p.startsWith("/manga"),
+  },
+  { href: "/search", label: "Search", Icon: MagnifierIcon, match: (p: string) => p.startsWith("/search") },
+  { href: "/anime", label: "Anime", Icon: PlayRectIcon, match: (p: string) => p.startsWith("/anime") },
+  { href: "/bookmarks", label: "Library", Icon: BooksIcon, match: (p: string) => p.startsWith("/bookmarks") },
+];
+
+const active = (path: string, href: string) =>
+  href === "/" ? path === "/" : path === href || path.startsWith(`${href}/`);
+
+/** Reads the URL for active states; wrap in Suspense and fall back to `<Chrome path="" />`. */
 export function Header() {
+  return <Chrome path={usePathname()} />;
+}
+
+export function Chrome({ path }: { path: string }) {
   return (
-    <header className="site-chrome glass sticky top-0 z-40 border-b border-hairline">
-      <div className="mx-auto flex h-14 max-w-[1400px] items-center gap-5 px-5 sm:px-8">
-        <Link
-          href="/"
-          className="display flex items-center gap-2 text-[19px] font-semibold"
-        >
-          <Logo />
-          Manhwa
-        </Link>
-        <nav className="hidden items-center gap-5 text-[13px] text-secondary lg:flex">
-          <Link href="/" className="transition-colors hover:text-label">
-            Home
+    <>
+      <header className="site-chrome glass-bar sticky top-0 z-40 pt-[var(--safe-top)] shadow-[inset_0_-0.5px_0_var(--color-hairline)]">
+        <div className="gutter mx-auto flex h-[52px] max-w-[1440px] items-center gap-6">
+          <Link href="/" className="flex items-center gap-2.5" aria-label="Manhwa home">
+            <Logo />
+            <span className="t-headline">Manhwa</span>
           </Link>
-          <Link href="/series" className="transition-colors hover:text-label">
-            Manhwa
-          </Link>
-          <Link href="/manga" className="transition-colors hover:text-label">
-            Manga
-          </Link>
-
-          <Link href="/anime" className="transition-colors hover:text-label">
-            Anime
-          </Link>
-          <Link
-            href="/bookmarks"
-            className="transition-colors hover:text-label"
-          >
-            Library
-          </Link>
-          <Link href="/settings" className="transition-colors hover:text-label">
-            Preferences
-          </Link>
-        </nav>
-        <div className="ml-auto w-full max-w-[260px]">
-          <SearchBox />
+          <nav className="hidden items-center gap-1 lg:flex" aria-label="Primary">
+            {NAV.map((n) => (
+              <Link
+                key={n.href}
+                href={n.href}
+                aria-current={active(path, n.href) ? "page" : undefined}
+                className={`t-footnote rounded-full px-3.5 py-1.5 font-medium transition-colors ${
+                  active(path, n.href) ? "bg-fill text-label" : "text-secondary hover:text-label"
+                }`}
+              >
+                {n.label}
+              </Link>
+            ))}
+          </nav>
+          <div className="ml-auto flex items-center gap-2">
+            <div className="hidden w-[260px] lg:block">
+              <SearchBox />
+            </div>
+            <Link
+              href="/settings"
+              aria-label="Preferences"
+              aria-current={path.startsWith("/settings") ? "page" : undefined}
+              className={`grid size-9 place-items-center rounded-full transition-colors hover:bg-fill ${
+                path.startsWith("/settings") ? "text-accent" : "text-secondary"
+              }`}
+            >
+              <GearIcon />
+            </Link>
+          </div>
         </div>
-      </div>
-      <nav className="no-scrollbar flex gap-6 overflow-x-auto border-t border-hairline px-5 py-2.5 text-[13px] text-secondary lg:hidden">
-        <Link href="/">Home</Link>
-        <Link href="/series">Manhwa</Link>
-        <Link href="/manga">Manga</Link>
+      </header>
 
-        <Link href="/anime" className="transition-colors hover:text-label">
-          Anime
-        </Link>
-        <Link href="/bookmarks">Library</Link>
-        <Link href="/settings">Preferences</Link>
+      <nav
+        aria-label="Tabs"
+        className="site-chrome glass-bar fixed inset-x-0 bottom-0 z-40 shadow-[inset_0_0.5px_0_var(--color-hairline)] lg:hidden"
+        style={{ paddingBottom: "var(--safe-bottom)" }}
+      >
+        <ul className="mx-auto grid h-14 max-w-xl grid-cols-5">
+          {TABS.map(({ href, label, Icon, match }) => {
+            const on = match(path);
+            return (
+              <li key={href}>
+                <Link
+                  href={href}
+                  aria-current={on ? "page" : undefined}
+                  className={`flex h-full flex-col items-center justify-center gap-[3px] transition-colors ${
+                    on ? "text-accent" : "text-tertiary active:text-secondary"
+                  }`}
+                >
+                  <Icon filled={on} className="size-[25px]" />
+                  <span className="text-[10px] leading-none font-medium tracking-[0.01em]">{label}</span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
       </nav>
-    </header>
+    </>
   );
 }
 
-function Logo() {
+export function Logo({ className = "size-7" }: { className?: string }) {
   return (
-    <span className="grid size-7 place-items-center rounded-[8px] bg-gradient-to-br from-[#c4b5fd] via-[#8b5cf6] to-[#4c1d95] shadow-[0_2px_10px_rgba(139,92,246,0.45)]">
-      <svg
-        viewBox="0 0 24 24"
-        className="size-4 text-white"
-        fill="currentColor"
-        aria-hidden
-      >
-        <path d="M5 4h4.5v16H5zM14.5 4H19v16h-4.5z" opacity=".95" />
-        <path d="M9.5 4 12 9l2.5-5v6L12 15l-2.5-5z" />
+    <span
+      className={`grid place-items-center rounded-[8px] bg-gradient-to-b from-[#3a3a3c] to-[#1c1c1e] shadow-[inset_0_0.5px_0_rgba(255,255,255,0.25),0_1px_3px_rgba(0,0,0,0.5)] ${className}`}
+    >
+      <svg viewBox="0 0 24 24" className="size-[60%] text-white" fill="currentColor" aria-hidden>
+        <path d="M4 5.2c2.6-.9 5.3-.6 7.2 1v13c-1.9-1.4-4.6-1.7-7.2-.8z" />
+        <path d="M20 5.2c-2.6-.9-5.3-.6-7.2 1v13c1.9-1.4 4.6-1.7 7.2-.8z" opacity=".55" />
       </svg>
     </span>
   );

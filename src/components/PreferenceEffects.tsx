@@ -7,11 +7,7 @@ export function PreferenceEffects() {
     document.documentElement.dataset.reduceMotion = String(p.reduceMotion);
     document.documentElement.style.setProperty(
       "--color-accent",
-      p.accent === "blue"
-        ? "#64a9ff"
-        : p.accent === "rose"
-          ? "#f48ca9"
-          : "#a78bfa",
+      p.accent === "violet" ? "#bf5af2" : p.accent === "rose" ? "#ff375f" : "#0a84ff",
     );
   }, [p.reduceMotion, p.accent]);
   return null;

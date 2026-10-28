@@ -48,7 +48,7 @@ export function Check({
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="size-4 accent-[#a78bfa]"
+        className="size-4 accent-[var(--color-accent)]"
       />
     </label>
   );
@@ -79,7 +79,7 @@ export function Range({
         min={min}
         max={max}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="mt-3 w-full accent-[#a78bfa]"
+        className="mt-3 w-full accent-[var(--color-accent)]"
       />
     </label>
   );

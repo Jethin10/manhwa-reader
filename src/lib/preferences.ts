@@ -28,7 +28,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   subtitleBackground: true,
   buffer: "balanced",
   reduceMotion: false,
-  accent: "violet",
+  accent: "blue",
 };
 export const PREFERENCES_KEY = "mr:preferences";
 const EVENT = "mr:preferences";
@@ -53,7 +53,7 @@ export function normalizePreferences(raw: unknown): Preferences {
     buffer: v.buffer === "generous" ? "generous" : "balanced",
     reduceMotion: v.reduceMotion === true,
     accent:
-      v.accent === "blue" ? "blue" : v.accent === "rose" ? "rose" : "violet",
+      v.accent === "violet" ? "violet" : v.accent === "rose" ? "rose" : "blue",
   };
 }
 export function getPreferences() {

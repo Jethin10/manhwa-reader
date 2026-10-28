@@ -1,42 +1,79 @@
 @import "tailwindcss";
 
+/* iOS dark system palette: grouped backgrounds, vibrant labels, hairline separators. */
 @theme inline {
   --color-bg: #000000;
-  --color-elevated: #0f0f11;
-  --color-card: #161618;
-  --color-fill: rgba(120, 120, 128, 0.16);
-  --color-fill-2: rgba(120, 120, 128, 0.24);
-  --color-hairline: rgba(255, 255, 255, 0.08);
-  --color-label: #f5f5f7;
-  --color-secondary: #a1a1a6;
-  --color-tertiary: #6e6e73;
-  --color-accent: #a78bfa;
-  --color-accent-strong: #8b5cf6;
+  --color-elevated: #1c1c1e;
+  --color-card: #1c1c1e;
+  --color-card-2: #2c2c2e;
+  --color-fill: rgba(118, 118, 128, 0.24);
+  --color-fill-2: rgba(118, 118, 128, 0.36);
+  --color-hairline: rgba(84, 84, 88, 0.55);
+  --color-label: #ffffff;
+  --color-secondary: rgba(235, 235, 245, 0.62);
+  --color-tertiary: rgba(235, 235, 245, 0.34);
+  --color-accent: #0a84ff;
+  --color-accent-strong: #0071e3;
+  --color-success: #30d158;
+  --color-warning: #ffd60a;
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", var(--font-inter), system-ui, sans-serif;
   --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", var(--font-inter), system-ui, sans-serif;
   --ease-apple: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-spring: cubic-bezier(0.34, 1.36, 0.64, 1);
+}
+
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --tabbar-h: calc(56px + var(--safe-bottom));
 }
 
 html {
   color-scheme: dark;
   background: var(--color-bg);
   -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
   background: var(--color-bg);
   color: var(--color-label);
   font-family: var(--font-sans);
-  font-feature-settings: "cv11", "ss01";
+  font-feature-settings: "cv11", "ss01", "ss03";
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  overscroll-behavior-y: none;
+}
+
+/* Installed app: no rubber-band text selection on chrome, no long-press callouts on artwork. */
+@media (display-mode: standalone) {
+  body {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  input,
+  textarea,
+  [data-selectable] {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+}
+img {
+  -webkit-touch-callout: none;
 }
 
 ::selection {
-  background: rgba(167, 139, 250, 0.35);
+  background: color-mix(in srgb, var(--color-accent) 40%, transparent);
 }
 
-/* Thin, unobtrusive scrollbars */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
@@ -62,11 +99,149 @@ body {
   display: none;
 }
 
-/* Frosted glass, Apple-style */
+/* Type scale from Apple's Human Interface Guidelines (size / line height / tracking). */
+@utility t-large {
+  font-family: var(--font-display);
+  font-size: 34px;
+  line-height: 41px;
+  font-weight: 700;
+  letter-spacing: -0.022em;
+}
+@utility t-title1 {
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+@utility t-title2 {
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 700;
+  letter-spacing: -0.016em;
+}
+@utility t-title3 {
+  font-family: var(--font-display);
+  font-size: 20px;
+  line-height: 25px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+}
+@utility t-headline {
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+}
+@utility t-body {
+  font-size: 17px;
+  line-height: 24px;
+  letter-spacing: -0.012em;
+}
+@utility t-callout {
+  font-size: 16px;
+  line-height: 21px;
+  letter-spacing: -0.01em;
+}
+@utility t-sub {
+  font-size: 15px;
+  line-height: 20px;
+  letter-spacing: -0.008em;
+}
+@utility t-footnote {
+  font-size: 13px;
+  line-height: 18px;
+  letter-spacing: -0.004em;
+}
+@utility t-caption {
+  font-size: 12px;
+  line-height: 16px;
+}
+@utility t-eyebrow {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Page gutters match iOS readable margins and widen on larger screens. */
+@utility gutter {
+  padding-inline: max(20px, env(safe-area-inset-left));
+  @media (width >= 40rem) {
+    padding-inline: 32px;
+  }
+  @media (width >= 80rem) {
+    padding-inline: 48px;
+  }
+}
+
+/* Grouped inset list: the Settings-app container. */
+@utility grouped {
+  background: var(--color-card);
+  border-radius: 14px;
+  overflow: hidden;
+}
+@utility row-divider {
+  & + & {
+    box-shadow: inset 0 0.5px 0 var(--color-hairline);
+  }
+}
+
+/* Buttons */
+@utility btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding-inline: 20px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  transition:
+    transform 0.2s var(--ease-apple),
+    background-color 0.2s,
+    opacity 0.2s;
+  &:active {
+    transform: scale(0.97);
+  }
+}
+@utility btn-primary {
+  background: var(--color-label);
+  color: #000;
+  &:hover {
+    background: rgba(255, 255, 255, 0.86);
+  }
+}
+@utility btn-tinted {
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  color: var(--color-accent);
+  &:hover {
+    background: color-mix(in srgb, var(--color-accent) 26%, transparent);
+  }
+}
+@utility btn-gray {
+  background: var(--color-fill);
+  color: var(--color-label);
+  &:hover {
+    background: var(--color-fill-2);
+  }
+}
+
+/* Frosted materials */
 .glass {
   background: rgba(22, 22, 24, 0.72);
   -webkit-backdrop-filter: saturate(180%) blur(24px);
   backdrop-filter: saturate(180%) blur(24px);
+}
+.glass-bar {
+  background: rgba(10, 10, 12, 0.7);
+  -webkit-backdrop-filter: saturate(180%) blur(30px);
+  backdrop-filter: saturate(180%) blur(30px);
 }
 .glass-light {
   background: rgba(255, 255, 255, 0.1);
@@ -81,6 +256,9 @@ body {
 
 .text-balance {
   text-wrap: balance;
+}
+.text-pretty {
+  text-wrap: pretty;
 }
 
 @keyframes shimmer {
@@ -130,6 +308,17 @@ body {
   animation: sheet-in 0.35s var(--ease-apple) both;
 }
 
+/* Tappable surfaces dim on press, like UIKit highlights. */
+.pressable {
+  transition:
+    transform 0.25s var(--ease-apple),
+    opacity 0.2s;
+}
+.pressable:active {
+  transform: scale(0.97);
+  opacity: 0.85;
+}
+
 /* Reader page images: crisp scaling, no drag ghosts */
 .page-img {
   image-rendering: high-quality;
@@ -146,9 +335,22 @@ body {
   }
 }
 
+/* Leave room for the mobile tab bar. */
+.app-main {
+  padding-bottom: calc(var(--tabbar-h) + 24px);
+}
+@media (width >= 64rem) {
+  .app-main {
+    padding-bottom: 0;
+  }
+}
+
 /* The reader is immersive: hide site chrome while it is mounted */
 body:has([data-reader]) .site-chrome {
   display: none;
+}
+body:has([data-reader]) .app-main {
+  padding-bottom: 0;
 }
 [data-reader-theme="paper"] .reader-copy, [data-reader-theme="sepia"] .reader-copy { color: #352c23; }
 [data-reader-theme="paper"] .reader-copy .text-secondary, [data-reader-theme="sepia"] .reader-copy .text-secondary { color: #675847; }
