@@ -13,8 +13,19 @@ const ALLOWED = [
   /^hianime\.tr$/,
   /^cdn\.anipixcdn\.co$/,
   /^cdn\.myanimelist\.net$/,
+  /^temp\.compsci88\.com$/,
+  /^cdn\.readdetectiveconan\.com$/,
+];
+// Hosts that refuse images without their own site as Referer.
+const REFERERS: [RegExp, string][] = [
+  [/asurascans\.com$/, "https://asurascans.com/"],
+  [/comix\.to$/, "https://comix.to/"],
+  [/^hianime\.tr$/, "https://hianime.tr/"],
+  [/readdetectiveconan\.com$/, "https://mangapill.com/"],
 ];
 const UA = "manhwa-reader/0.1 (personal reader)";
+const BROWSER_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 const CACHE_DIR = join(tmpdir(), "manhwa-reader-img");
 const CACHE_HEADERS = {
   "Cache-Control": "public, max-age=31536000, immutable",
@@ -68,16 +79,11 @@ function getOriginal(target: URL, stableKey: string): Promise<Buffer> {
       let lastErr: unknown;
       for (let attempt = 0; attempt < 4; attempt++) {
         try {
-          const referer = target.hostname.endsWith("asurascans.com")
-            ? "https://asurascans.com/"
-            : target.hostname.endsWith("comix.to")
-              ? "https://comix.to/"
-              : target.hostname === "hianime.tr"
-                ? "https://hianime.tr/"
-                : undefined;
+          const referer = REFERERS.find(([re]) => re.test(target.hostname))?.[1];
           const res = await fetch(target, {
             headers: {
-              "User-Agent": UA,
+              // MangaDex asks clients to identify themselves; other CDNs expect a browser.
+              "User-Agent": /mangadex\.(org|network)$/.test(target.hostname) ? UA : BROWSER_UA,
               ...(referer ? { Referer: referer } : {}),
             },
             redirect: "error",

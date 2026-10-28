@@ -1,15 +1,22 @@
 import "server-only";
 import { load } from "cheerio";
 
-export async function sourceFetch(url: string, referer?: string) {
+export const BROWSER_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
+
+export async function sourceFetch(
+  url: string,
+  opts: { referer?: string; headers?: Record<string, string>; timeout?: number } = {},
+) {
   let res: Response;
   try {
     res = await fetch(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0",
-        ...(referer ? { Referer: referer } : {}),
+        "User-Agent": BROWSER_UA,
+        ...(opts.referer ? { Referer: opts.referer } : {}),
+        ...opts.headers,
       },
-      signal: AbortSignal.timeout(18000),
+      signal: AbortSignal.timeout(opts.timeout ?? 18000),
     });
   } catch {
     throw new Error(

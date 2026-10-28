@@ -1,13 +1,9 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import type { Metadata } from "next";
-import {
-  getAllUploads,
-  getChapter,
-  getChapters,
-  getPages,
-  getSeries,
-} from "@/lib/catalog";
+import { redirect, unstable_rethrow } from "next/navigation";
+import { getChapter, getPages, getSeries, type PageImage } from "@/lib/catalog";
+import { getMergedChapters, versionsOf } from "@/lib/unified";
 import { Reader } from "@/components/Reader";
 import { SourceIssue } from "@/components/SourceIssue";
 
@@ -49,6 +45,7 @@ async function ChapterContent({ params }: { params: Props["params"] }) {
   try {
     return await LoadChapter({ params });
   } catch (e) {
+    unstable_rethrow(e);
     return (
       <SourceIssue
         message={
@@ -63,13 +60,17 @@ async function ChapterContent({ params }: { params: Props["params"] }) {
 
 async function LoadChapter({ params }: { params: Props["params"] }) {
   const { id, chapterId } = await params;
-  const [series, chapters, uploads, { chapter }] = await Promise.all([
+  const [series, { chapters, uploads }, { chapter }] = await Promise.all([
     getSeries(id),
-    getChapters(id),
-    getAllUploads(id),
+    getMergedChapters(id),
     getChapter(chapterId),
   ]);
+  const copies = versionsOf(uploads, chapter.number, id);
 
+  // A licensed chapter may still be hosted by another source.
+  const hosted = copies.find((c) => c.id !== chapterId);
+  if (chapter.externalUrl && hosted)
+    redirect(`/series/${id}/chapter/${hosted.id}`);
   if (chapter.externalUrl) {
     return (
       <div className="mx-auto max-w-md px-5 py-28 text-center">
@@ -99,7 +100,15 @@ async function LoadChapter({ params }: { params: Props["params"] }) {
     );
   }
 
-  const pages = await getPages(chapterId);
+  let pages: PageImage[];
+  try {
+    pages = await getPages(chapterId);
+  } catch (error) {
+    // Keep reading: switch to the best other copy of this chapter.
+    const fallback = copies.find((c) => c.id !== chapterId);
+    if (!fallback) throw error;
+    redirect(`/series/${id}/chapter/${fallback.id}`);
+  }
   const readable = chapters.filter((c) => !c.externalUrl);
   // Newest first, so the next chapter sits before this one in the array.
   const idx = readable.findIndex(
@@ -109,12 +118,11 @@ async function LoadChapter({ params }: { params: Props["params"] }) {
   );
   const next = idx > 0 ? readable[idx - 1] : null;
   const prev = idx >= 0 && idx < readable.length - 1 ? readable[idx + 1] : null;
-  const versions = uploads
-    .filter(
-      (u) =>
-        !u.externalUrl && u.number === chapter.number && chapter.number != null,
-    )
-    .map((u) => ({ id: u.id, group: u.group, pages: u.pages }));
+  const versions = copies.map((u) => ({
+    id: u.id,
+    group: u.source && u.group !== u.source ? `${u.group ?? "Unknown group"} · ${u.source}` : (u.group ?? u.source ?? null),
+    pages: u.pages,
+  }));
 
   return (
     <Reader

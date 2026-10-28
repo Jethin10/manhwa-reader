@@ -45,6 +45,8 @@ export type Chapter = {
   externalUrl: string | null;
   readableAt: string;
   group: string | null;
+  /** Source name, set when chapters from several sources are merged into one list. */
+  source?: string;
 };
 
 export type Stats = { rating: number | null; follows: number };
