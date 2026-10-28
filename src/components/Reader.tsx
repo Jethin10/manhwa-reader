@@ -277,7 +277,7 @@ export function Reader({
     >
       {/* Top bar */}
       <header
-        className={`glass fixed inset-x-0 top-0 z-50 border-b border-hairline transition-transform duration-500 ease-[var(--ease-apple)] ${
+        className={`glass-bar fixed inset-x-0 top-0 z-50 pt-[var(--safe-top)] shadow-[inset_0_-0.5px_0_var(--color-hairline)] transition-transform duration-500 ease-[var(--ease-apple)] ${
           chrome ? "translate-y-0" : "-translate-y-full"
         }`}
       >

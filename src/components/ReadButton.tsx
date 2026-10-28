@@ -21,7 +21,7 @@ export function ReadButton({
   return (
     <Link
       href={`/series/${seriesId}/chapter/${target}`}
-      className="rounded-full bg-white px-7 py-3 text-[15px] font-semibold text-black transition hover:bg-white/85 active:scale-[0.98]"
+      className="btn btn-primary h-[50px] w-full px-8 text-[16px] sm:w-auto"
     >
       {text}
     </Link>

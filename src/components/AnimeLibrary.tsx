@@ -84,7 +84,7 @@ export function ContinueWatching() {
   if (!history.length) return null;
   return (
     <section className="mt-10">
-      <h2 className="display text-2xl font-semibold">Continue watching</h2>
+      <h2 className="t-title2">Continue Watching</h2>
       <div className="no-scrollbar mt-5 flex gap-4 overflow-x-auto pb-3">
         {history.map((h) => (
           <Link

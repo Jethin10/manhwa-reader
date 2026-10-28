@@ -39,7 +39,7 @@ export function Cover({
 }) {
   return (
     <div
-      className={`relative overflow-hidden rounded-[10px] bg-card shadow-[0_8px_24px_-12px_rgba(0,0,0,0.8)] after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:ring-1 after:ring-white/[0.08] after:ring-inset ${className}`}
+      className={`relative overflow-hidden rounded-[12px] bg-card after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:shadow-[inset_0_0_0_0.5px_rgba(255,255,255,0.14)] ${className}`}
     >
       {cover && (
         <RetryImg
@@ -49,7 +49,7 @@ export function Cover({
           alt={alt}
           loading={priority ? "eager" : "lazy"}
           decoding="async"
-          className="absolute inset-0 size-full object-cover ease-[var(--ease-apple)] group-hover:scale-[1.04]"
+          className="absolute inset-0 size-full object-cover duration-700 ease-[var(--ease-apple)] group-hover:scale-[1.03]"
         />
       )}
     </div>
@@ -69,7 +69,7 @@ export function SeriesCard({
     <Link
       href={`/series/${series.id}`}
       prefetch={!series.id.startsWith("comix~")}
-      className="group block"
+      className="group pressable block"
     >
       <Cover
         cover={series.cover}
@@ -77,10 +77,10 @@ export function SeriesCard({
         sizes={sizes}
         className="aspect-[2/3]"
       />
-      <h3 className="mt-2.5 line-clamp-2 text-[13px] leading-snug font-medium text-label">
+      <h3 className="t-footnote mt-2 line-clamp-2 font-medium text-label">
         {series.title}
       </h3>
-      <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-secondary">
+      <p className="t-caption mt-0.5 flex items-center gap-1.5 truncate text-secondary">
         <span>{sourceOf(series.id)}</span>
         {series.lastChapter && (
           <>

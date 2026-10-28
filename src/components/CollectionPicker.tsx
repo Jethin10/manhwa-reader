@@ -19,6 +19,7 @@ export function CollectionPicker({
     (x) => item.media === "series" && x.id === item.id,
   );
   return (
+    <span className="relative inline-flex">
     <select
       aria-label={
         item.media === "anime" ? "Watchlist status" : "Reading status"
@@ -31,7 +32,7 @@ export function CollectionPicker({
         );
         if (!e.target.value && legacy) toggleBookmark(item);
       }}
-      className="max-w-full rounded-xl bg-fill px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-accent"
+      className="glass-light h-11 max-w-full cursor-pointer appearance-none rounded-full pr-9 pl-4 text-[15px] font-semibold text-label outline-none hover:bg-white/20"
     >
       <option value="">
         {saved || legacy
@@ -46,5 +47,9 @@ export function CollectionPicker({
         </option>
       ))}
     </select>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden className="pointer-events-none absolute top-1/2 right-3.5 size-3.5 -translate-y-1/2 text-secondary">
+        <path d="m7 10 5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </span>
   );
 }

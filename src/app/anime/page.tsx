@@ -42,7 +42,7 @@ async function AnimeContent({
   } catch (e) {
     return (
       <div className="mx-auto max-w-[1000px] px-5 py-20">
-        <h1 className="display text-4xl font-bold">Anime</h1>
+        <h1 className="t-large">Anime</h1>
         <p role="alert" className="mt-6 text-secondary">
           {e instanceof Error ? e.message : "Catalog unavailable."}
         </p>
@@ -96,11 +96,11 @@ async function AnimeContent({
           </div>
         </section>
       )}
-      <div className="mx-auto max-w-[1400px] px-5 sm:px-8">
+      <div className="gutter mx-auto max-w-[1440px]">
         <ContinueWatching />
         <div className="mt-10 flex flex-wrap items-end justify-between gap-5">
           <div>
-            <h2 className="display text-3xl font-bold">
+            <h2 className="t-title1">
               {q ? `Results for "${q}"` : "Find your anime"}
             </h2>
             <p className="mt-2 text-sm text-secondary">

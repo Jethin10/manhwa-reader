@@ -17,13 +17,13 @@ export function BookmarkButton({ series }: { series: SavedSeries }) {
         if (legacy || !saved) toggleBookmark(series);
       }}
       aria-pressed={saved}
-      className="glass-light flex items-center gap-2 rounded-full px-5 py-3 text-[15px] font-semibold ring-1 ring-white/15 transition hover:bg-white/20 active:scale-[0.98]"
+      className={`btn ${saved ? "btn-tinted" : "glass-light text-label hover:bg-white/20"}`}
     >
       <BookmarkIcon
         filled={saved}
-        className={`size-4 ${saved ? "text-accent" : ""}`}
+        className="size-4"
       />
-      {saved ? "In Library" : "Add to Library"}
+      {saved ? "In Library" : "Library"}
     </button>
   );
 }

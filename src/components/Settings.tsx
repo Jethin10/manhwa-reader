@@ -36,9 +36,9 @@ export function Settings() {
     );
   }
   return (
-    <div className="mx-auto max-w-[1050px] px-5 py-10 sm:px-8">
-      <h1 className="display text-4xl font-bold">Make it yours</h1>
-      <p className="mt-3 text-sm text-secondary">
+    <div className="gutter mx-auto max-w-[1050px] pt-4 pb-10 lg:pt-12">
+      <h1 className="t-large">Preferences</h1>
+      <p className="t-sub mt-1 text-secondary">
         Reading, watching, and accessibility preferences stay on this device.
       </p>
       <nav

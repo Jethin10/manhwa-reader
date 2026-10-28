@@ -22,10 +22,10 @@ export function Shelf({
 
   return (
     <section className="group/shelf relative">
-      <div className="mb-3 flex items-baseline justify-between px-5 sm:px-8">
-        <h2 className="display text-[22px] font-semibold">{title}</h2>
+      <div className="gutter mx-auto mb-3 flex max-w-[1440px] items-baseline justify-between">
+        <h2 className="t-title2">{title}</h2>
         {href && (
-          <Link href={href} className="text-[13px] text-accent hover:underline">
+          <Link href={href} className="t-callout text-accent">
             See All
           </Link>
         )}
@@ -33,7 +33,7 @@ export function Shelf({
       <div className="relative">
         <div
           ref={ref}
-          className="no-scrollbar flex snap-x snap-mandatory scroll-px-5 gap-4 overflow-x-auto px-5 pb-2 sm:scroll-px-8 sm:px-8"
+          className="no-scrollbar mx-auto flex max-w-[1440px] snap-x snap-mandatory scroll-px-5 gap-3.5 overflow-x-auto overscroll-x-contain px-5 pb-2 sm:scroll-px-8 sm:gap-5 sm:px-8 xl:scroll-px-12 xl:px-12"
         >
           {children}
         </div>
@@ -58,6 +58,6 @@ function ShelfArrow({ side, onClick }: { side: "left" | "right"; onClick: () => 
   );
 }
 
-export function ShelfItem({ children, className = "w-[150px] sm:w-[170px]" }: { children: React.ReactNode; className?: string }) {
+export function ShelfItem({ children, className = "w-[132px] sm:w-[164px]" }: { children: React.ReactNode; className?: string }) {
   return <div className={`shrink-0 snap-start ${className}`}>{children}</div>;
 }

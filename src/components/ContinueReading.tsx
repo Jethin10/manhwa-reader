@@ -21,29 +21,29 @@ export function ContinueReading() {
   return (
     <Shelf title="Continue Reading" href="/bookmarks">
       {history.slice(0, 16).map((h) => (
-        <ShelfItem key={h.id} className="w-[150px] sm:w-[170px]">
+        <ShelfItem key={h.id}>
           <Link
             href={`/series/${h.id}/chapter/${h.chapterId}`}
-            className="group block"
+            className="group pressable block"
           >
             <div className="relative">
               <Cover
                 cover={h.cover}
                 alt={h.title}
-                sizes="170px"
+                sizes="(min-width: 640px) 164px, 132px"
                 className="aspect-[2/3]"
               />
-              <div className="absolute inset-x-2 bottom-2 h-[3px] overflow-hidden rounded-full bg-white/25">
+              <div className="absolute inset-x-2.5 bottom-2.5 h-[4px] overflow-hidden rounded-full bg-black/40 backdrop-blur-sm">
                 <div
                   className="h-full rounded-full bg-white"
                   style={{ width: `${Math.round((h.progress ?? 0) * 100)}%` }}
                 />
               </div>
             </div>
-            <p className="mt-2.5 line-clamp-1 text-[13px] font-medium">
+            <p className="t-footnote mt-2 line-clamp-1 font-medium">
               {h.title}
             </p>
-            <p className="text-[12px] text-secondary">
+            <p className="t-caption text-secondary">
               {h.chapterNumber ? `Chapter ${h.chapterNumber}` : "Continue"}
             </p>
           </Link>

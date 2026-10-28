@@ -75,8 +75,8 @@ export function Library() {
     <div className="pb-16">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="display text-4xl font-bold">Your library</h1>
-          <p className="mt-2 text-sm text-secondary">
+          <h1 className="t-large">Library</h1>
+          <p className="t-sub mt-1 text-secondary">
             {merged.size} saved titles on this device
           </p>
         </div>
@@ -228,7 +228,7 @@ export function Library() {
         </button>
       )}
       <section className="mt-12">
-        <h2 className="display text-2xl font-semibold">Recent activity</h2>
+        <h2 className="t-title2">Recent Activity</h2>
         <div className="mt-4 overflow-hidden rounded-2xl bg-card">
           {history.slice(0, 10).map((h) => (
             <div

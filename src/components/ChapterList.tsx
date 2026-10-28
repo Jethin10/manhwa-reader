@@ -9,7 +9,19 @@ import { TimeAgo } from "./TimeAgo";
 
 const PAGE = 50;
 
-export function ChapterList({ seriesId, chapters }: { seriesId: string; chapters: Chapter[] }) {
+export function ChapterList({
+  seriesId,
+  chapters,
+  showSource,
+  pending,
+}: {
+  seriesId: string;
+  chapters: Chapter[];
+  /** Label each row with its source when the list merges several. */
+  showSource?: boolean;
+  /** Other sources are still being checked. */
+  pending?: boolean;
+}) {
   const [q, setQ] = useState("");
   const [asc, setAsc] = useState(false);
   const [limit, setLimit] = useState(PAGE);
@@ -25,13 +37,20 @@ export function ChapterList({ seriesId, chapters }: { seriesId: string; chapters
   const shown = filtered.slice(0, limit);
 
   return (
-    <section>
-      <div className="mb-3 flex flex-wrap items-center gap-3">
-        <h2 className="display text-[22px] font-semibold">
-          Chapters <span className="text-[15px] font-normal text-tertiary">{chapters.length}</span>
+    <section aria-busy={pending}>
+      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h2 className="t-title2 flex items-baseline gap-2">
+          Chapters
+          <span className="t-sub font-normal text-tertiary tabular-nums">{chapters.length}</span>
         </h2>
-        <div className="ml-auto flex items-center gap-2">
-          <label className="flex h-8 w-44 items-center gap-2 rounded-[9px] bg-fill px-2.5">
+        {pending && (
+          <span className="t-caption flex items-center gap-1.5 text-secondary">
+            <span className="size-3 animate-spin rounded-full border-[1.5px] border-tertiary border-t-transparent" />
+            Checking other sources
+          </span>
+        )}
+        <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
+          <label className="flex h-9 flex-1 items-center gap-2 rounded-[10px] bg-fill px-3 sm:w-48 sm:flex-none">
             <SearchIcon className="size-[14px] text-secondary" />
             <input
               value={q}
@@ -39,41 +58,52 @@ export function ChapterList({ seriesId, chapters }: { seriesId: string; chapters
                 setQ(e.target.value);
                 setLimit(PAGE);
               }}
-              placeholder="Find chapter"
-              className="w-full bg-transparent text-[13px] outline-none placeholder:text-secondary"
+              inputMode="decimal"
+              enterKeyHint="search"
+              placeholder="Chapter number"
+              aria-label="Find chapter"
+              className="t-footnote w-full bg-transparent outline-none placeholder:text-secondary"
             />
           </label>
           <button
             onClick={() => setAsc((v) => !v)}
-            className="h-8 rounded-[9px] bg-fill px-3 text-[13px] text-label/90 transition hover:bg-fill-2"
+            className="t-footnote h-9 rounded-[10px] bg-fill px-3.5 font-medium text-label/90 transition hover:bg-fill-2"
           >
-            {asc ? "Oldest" : "Newest"}
+            {asc ? "Oldest first" : "Newest first"}
           </button>
         </div>
       </div>
 
       {chapters.length === 0 ? (
-        <p className="rounded-[18px] bg-card/60 p-10 text-center text-[15px] text-secondary">
-          No English chapters are available yet.
+        <p className="grouped t-callout p-10 text-center text-secondary">
+          {pending ? "Looking for chapters on other sources…" : "No English chapters are available on any source yet."}
         </p>
       ) : (
-        <ul className="overflow-hidden rounded-[18px] bg-card/60 ring-1 ring-white/[0.06]">
+        <ul className="grouped">
           {shown.map((c) => {
             const isLast = c.id === lastRead;
+            const detail = [c.number && c.title ? c.title : null, c.group].filter(Boolean).join(" · ");
             const body = (
               <>
                 <div className="min-w-0 flex-1">
-                  <p className="flex items-center gap-2 text-[15px]">
-                    {isLast && <span className="size-2 shrink-0 rounded-full bg-accent" />}
+                  <p className="t-callout flex items-center gap-2">
+                    {isLast && <span className="size-2 shrink-0 rounded-full bg-accent" aria-label="Last read" />}
                     <span className={isLast ? "font-semibold" : ""}>
                       {c.number ? `Chapter ${c.number}` : (c.title ?? "Oneshot")}
                     </span>
                   </p>
-                  <p className="truncate text-[12px] text-secondary">
-                    {[c.number && c.title ? c.title : null, c.group].filter(Boolean).join(" · ")}
-                  </p>
+                  {(detail || (showSource && c.source)) && (
+                    <p className="t-caption mt-0.5 flex items-center gap-1.5 truncate text-secondary">
+                      {showSource && c.source && (
+                        <span className="shrink-0 rounded-[5px] bg-fill px-1.5 py-px text-[11px] font-medium text-label/80">
+                          {c.source}
+                        </span>
+                      )}
+                      {detail !== c.source && <span className="truncate">{detail}</span>}
+                    </p>
+                  )}
                 </div>
-                <TimeAgo iso={c.readableAt} className="shrink-0 text-[12px] text-tertiary" />
+                <TimeAgo iso={c.readableAt} className="t-caption shrink-0 text-tertiary" />
                 {c.externalUrl ? (
                   <ExternalIcon className="size-4 text-tertiary" />
                 ) : (
@@ -82,15 +112,15 @@ export function ChapterList({ seriesId, chapters }: { seriesId: string; chapters
               </>
             );
             const cls =
-              "flex items-center gap-3 px-5 py-3 transition-colors hover:bg-white/[0.04]";
+              "flex min-h-[52px] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-white/[0.04] active:bg-white/[0.08]";
             return (
-              <li key={c.id} className="border-t border-hairline first:border-0">
+              <li key={c.id} className="row-divider">
                 {c.externalUrl ? (
                   <a href={c.externalUrl} target="_blank" rel="noreferrer" className={cls} title="Hosted on the official site">
                     {body}
                   </a>
                 ) : (
-                  <Link href={`/series/${seriesId}/chapter/${c.id}`} className={cls}>
+                  <Link href={`/series/${seriesId}/chapter/${c.id}`} prefetch={false} className={cls}>
                     {body}
                   </Link>
                 )}
@@ -102,9 +132,9 @@ export function ChapterList({ seriesId, chapters }: { seriesId: string; chapters
       {filtered.length > limit && (
         <button
           onClick={() => setLimit((l) => l + PAGE * 2)}
-          className="mt-3 w-full rounded-[14px] bg-fill py-3 text-[14px] font-medium text-accent transition hover:bg-fill-2"
+          className="grouped t-callout mt-3 w-full py-3 font-medium text-accent transition hover:bg-card-2"
         >
-          Show more ({filtered.length - limit} remaining)
+          Show {Math.min(PAGE * 2, filtered.length - limit)} more
         </button>
       )}
     </section>

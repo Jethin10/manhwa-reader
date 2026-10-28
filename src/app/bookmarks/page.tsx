@@ -5,7 +5,7 @@ export const metadata: Metadata = { title: "Library" };
 
 export default function BookmarksPage() {
   return (
-    <div className="mx-auto max-w-[1400px] px-5 pt-10 sm:px-8">
+    <div className="gutter mx-auto max-w-[1440px] pt-4 lg:pt-12">
       <Library />
     </div>
   );

@@ -15,8 +15,8 @@ import { TimeAgo } from "@/components/TimeAgo";
 
 export default function Home() {
   return (
-    <div className="space-y-14 pb-8">
-      <Suspense fallback={<div className="skeleton h-[600px]" />}>
+    <div className="space-y-11 pb-8 lg:space-y-14">
+      <Suspense fallback={<HeroSkeleton />}>
         <Featured />
       </Suspense>
       <ContinueReading />
@@ -66,7 +66,7 @@ async function Featured() {
     }));
   if (!series.length)
     return (
-      <div className="px-8 py-20 text-secondary">
+      <div className="gutter t-callout py-20 text-secondary">
         The catalog is unavailable. Try Browse or Anime.
       </div>
     );
@@ -78,33 +78,31 @@ async function TopCharts() {
   const { series } = await browseSeries({
     source: "asura",
     order: "followedCount",
-    limit: 10,
+    limit: 12,
     page: 2,
   });
+  const columns: (typeof series)[] = [];
+  for (let i = 0; i < series.length; i += 3) columns.push(series.slice(i, i + 3));
   return (
-    <Shelf title="Top 10 Trending" href="/series">
-      {series.map((s, idx) => (
-        <ShelfItem key={s.id} className="w-[226px] sm:w-[240px]">
-          <Link href={`/series/${s.id}`} className="group flex items-end">
-            <span
-              aria-hidden
-              className="display relative z-10 -mr-4 w-[84px] shrink-0 text-right text-[112px] leading-[0.78] font-bold text-black [-webkit-text-stroke:2px_rgba(255,255,255,0.45)]"
-            >
-              {idx + 1}
-            </span>
-            <Cover
-              cover={s.cover}
-              alt={s.title}
-              sizes="160px"
-              className="aspect-[2/3] w-[140px] shrink-0 sm:w-[156px]"
-            />
-          </Link>
-          <Link
-            href={`/series/${s.id}`}
-            className="mt-2.5 ml-[68px] line-clamp-1 block text-[13px] font-medium"
-          >
-            {s.title}
-          </Link>
+    <Shelf title="Top Charts" href="/series">
+      {columns.map((col, c) => (
+        <ShelfItem key={c} className="w-[calc(100vw-56px)] max-w-[380px] sm:w-[360px]">
+          <ol>
+            {col.map((s, r) => (
+              <li key={s.id} className="row-divider">
+                <Link href={`/series/${s.id}`} className="group pressable flex items-center gap-3.5 py-2.5">
+                  <Cover cover={s.cover} alt={s.title} sizes="64px" className="aspect-[2/3] w-[56px] shrink-0 rounded-[8px]" />
+                  <span className="t-headline w-5 shrink-0 text-center tabular-nums">{c * 3 + r + 1}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="t-sub line-clamp-1 font-medium">{s.title}</span>
+                    <span className="t-footnote line-clamp-1 text-secondary">
+                      {[s.type, s.tags.find((t) => t.group === "genre")?.name].filter(Boolean).join(" · ")}
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ol>
         </ShelfItem>
       ))}
     </Shelf>
@@ -133,7 +131,7 @@ async function SeriesShelf({
     <Shelf title={title} href={href}>
       {series.map((s) => (
         <ShelfItem key={s.id}>
-          <SeriesCard series={s} stats={stats[s.id]} sizes="170px" />
+          <SeriesCard series={s} stats={stats[s.id]} sizes="(min-width: 640px) 164px, 132px" />
         </ShelfItem>
       ))}
     </Shelf>
@@ -143,17 +141,14 @@ async function SeriesShelf({
 async function Latest() {
   const entries = await getLatestUpdates("manhwa");
   return (
-    <section className="mx-auto max-w-[1400px] px-5 sm:px-8">
-      <div className="mb-4 flex items-baseline justify-between">
-        <h2 className="display text-[22px] font-semibold">Latest Updates</h2>
-        <Link
-          href="/series?order=latestUploadedChapter"
-          className="text-[13px] text-accent hover:underline"
-        >
+    <section className="gutter mx-auto max-w-[1440px]">
+      <div className="mb-2 flex items-baseline justify-between">
+        <h2 className="t-title2">Latest Updates</h2>
+        <Link href="/series?order=latestUploadedChapter" className="t-callout text-accent">
           See All
         </Link>
       </div>
-      <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-x-10 sm:grid-cols-2 xl:grid-cols-3">
         {entries.map((e) => (
           <LatestRow key={e.series.id} entry={e} />
         ))}
@@ -164,28 +159,28 @@ async function Latest() {
 
 function LatestRow({ entry: { series, chapters } }: { entry: LatestEntry }) {
   return (
-    <article className="group/row flex gap-4 border-b border-hairline py-4">
+    <article className="group/row flex gap-4 py-3.5 shadow-[inset_0_-0.5px_0_var(--color-hairline)]">
       <Link href={`/series/${series.id}`} className="group shrink-0">
         <Cover
           cover={series.cover}
           alt={series.title}
           sizes="90px"
-          className="aspect-[2/3] w-[78px]"
+          className="aspect-[2/3] w-[72px] rounded-[10px]"
         />
       </Link>
       <div className="min-w-0 flex-1 py-0.5">
         <Link
           href={`/series/${series.id}`}
-          className="line-clamp-1 text-[15px] font-semibold hover:text-accent"
+          className="t-sub line-clamp-1 font-semibold"
         >
           {series.title}
         </Link>
-        <ul className="mt-2 space-y-0.5">
+        <ul className="mt-1.5">
           {chapters.map((c, i) => (
             <li key={c.id}>
               <Link
                 href={`/series/${series.id}/chapter/${c.id}`}
-                className="-mx-2 flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-[13px] transition-colors hover:bg-fill"
+                className="t-footnote -mx-2 flex min-h-8 items-center justify-between gap-2 rounded-[8px] px-2 py-1 transition-colors hover:bg-fill active:bg-fill-2"
               >
                 <span className="flex items-center gap-2 truncate">
                   {i === 0 && (
@@ -197,7 +192,7 @@ function LatestRow({ entry: { series, chapters } }: { entry: LatestEntry }) {
                 </span>
                 <TimeAgo
                   iso={c.readableAt}
-                  className="shrink-0 text-[12px] text-tertiary"
+                  className="t-caption shrink-0 text-tertiary"
                 />
               </Link>
             </li>
@@ -208,15 +203,23 @@ function LatestRow({ entry: { series, chapters } }: { entry: LatestEntry }) {
   );
 }
 
+function HeroSkeleton() {
+  return (
+    <div className="gutter mx-auto max-w-[1440px] pt-3 lg:pt-6">
+      <div className="skeleton h-[min(118vw,520px)] rounded-[22px] md:h-[440px] lg:h-[480px]" />
+    </div>
+  );
+}
+
 function ShelfSkeleton() {
   return (
-    <div className="space-y-3 px-5 sm:px-8">
+    <div className="gutter mx-auto max-w-[1440px] space-y-3">
       <div className="skeleton h-7 w-48 rounded-md" />
       <div className="flex gap-4 overflow-hidden">
         {Array.from({ length: 8 }, (_, i) => (
           <div
             key={i}
-            className="skeleton aspect-[2/3] w-[170px] shrink-0 rounded-[10px]"
+            className="skeleton aspect-[2/3] w-[132px] shrink-0 rounded-[12px] sm:w-[164px]"
           />
         ))}
       </div>
@@ -226,7 +229,7 @@ function ShelfSkeleton() {
 
 function LatestSkeleton() {
   return (
-    <div className="mx-auto grid max-w-[1400px] gap-4 px-5 sm:grid-cols-2 sm:px-8 xl:grid-cols-3">
+    <div className="gutter mx-auto grid max-w-[1440px] gap-4 sm:grid-cols-2 xl:grid-cols-3">
       {Array.from({ length: 9 }, (_, i) => (
         <div key={i} className="skeleton h-[140px] rounded-xl" />
       ))}
