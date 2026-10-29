@@ -6,7 +6,6 @@ A manga, manhwa and anime app built with Next.js. It reads from five sources, op
 
 ```powershell
 npm install
-npx playwright install chromium
 npm run build
 npm start -- -p 3123
 ```
@@ -22,7 +21,7 @@ Open `/manga` for Japanese manga, or browse `/series` and pick a source. Five so
 | Asura Scans | 5 | Original-resolution webtoon scans. Premium and early-access chapters are omitted. |
 | MangaDex | 4 | Uploader originals in many languages. |
 | WeebCentral | 3 | Large English catalog. |
-| Comix | 2 | Broad catalog. Loads through a local headless Chromium, so first visits are slower. |
+| MangaKatana | 2 | Broad catalog of manga and manhwa. |
 | MangaPill | 1 | Fast manga releases. |
 
 "All sources" searches every source at once and removes duplicates, keeping the copy from the higher-quality source.
@@ -35,7 +34,7 @@ A series page finds the same title on the other sources by matching its main and
 
 If a source fails to load a chapter's pages, the reader moves to the next copy. The Sources card on each series lists every source that matched, how many chapters each one supplies, and any source that is currently down. A title missing from one site usually still opens from the others.
 
-Comix requires the Playwright browser installed above. Site challenges or layout changes can interrupt a source. Catalog failures appear beside the results, and the other sources stay usable.
+Every source is read over plain HTTP, so no browser is needed on the server. Site challenges or layout changes can interrupt a source. Catalog failures appear beside the results, and the other sources stay usable.
 
 The immersive reader offers continuous scroll, single pages, and double-page spreads; independent RTL/LTR direction; spread offset; width/height fitting; black/dim/paper/sepia surrounds; image brightness/contrast; gaps; configurable preloading; and title-specific presets. Manga defaults to single-page RTL; manhwa defaults to continuous scroll. Keyboard, edge taps, swipes, chapter navigation, translation choices and saved positions are supported. Original-quality pages remain available with optional HD sharpening. Existing MangaDex bookmarks still work.
 
@@ -73,6 +72,28 @@ npm run mobile:apk
 
 Building the APK needs JDK 21 and the Android SDK. The APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. Use `npm run mobile:open` to open the project in Android Studio. `npm run icons` regenerates the web and Android icons from `scripts/icon.svg`.
 
+## Host it for free
+
+`render.yaml` deploys the app to Render's free plan:
+
+1. In the Render dashboard, choose **New › Blueprint** and pick this repository.
+2. Render builds the app, generates `IMAGE_SIGNING_KEY`, and serves it at `https://<name>.onrender.com`.
+3. In [UptimeRobot](https://uptimerobot.com), add an HTTP(s) monitor for `https://<name>.onrender.com/api/health` with a 5-minute interval.
+
+Render's free plan puts an app to sleep after 15 minutes without traffic, and the next visit then takes about a minute to wake it. The UptimeRobot check every 5 minutes keeps the app awake. One app running all month uses about 744 of the 750 free hours, so keep no other free services in the same workspace. `/api/health` answers without contacting any source, so checks don't trigger scraping.
+
+Other free options:
+
+| Host | Fit |
+| --- | --- |
+| Oracle Cloud Always Free VM | The strongest free option: a server that never sleeps, with up to 4 ARM cores and 24 GB of memory. Run `npm run build && npm start` behind Caddy. Sign-up requires a card. |
+| Cloudflare Tunnel from your PC | Free, and your home IP is less likely to be blocked by the sources. The app is only up while your PC is on. Run `cloudflared tunnel --url http://localhost:3000`. |
+| Koyeb free instance | Similar to Render, with 512 MB of memory and sleep when idle. The same UptimeRobot trick applies. |
+
+Vercel isn't recommended. Anime video streams through the app's own proxy, which would use up Vercel's free bandwidth and run into its function time limits. Each serverless instance also keeps its own disk cache.
+
+For the Android app, set `MANHWA_SERVER_URL` to the hosted address before running `npm run mobile:apk`.
+
 ## Anime
 
 Open `/anime` for popular titles, search, recently updated shows, airing titles, and dubs. Selecting a show opens a franchise strip with its linked main series, movies, and specials. Bleach includes the original series, all four Thousand-Year Blood War parts, four movies, and related specials. These are franchise relationships, not a blanket claim that every movie or special is canon. Entries with no linked season order are supplemented from the source catalog.
@@ -89,7 +110,7 @@ Anime metadata and server links come from HiAnime.tr, an independent site using 
 
 ## Images and local data
 
-`/api/img` caches originals and resized versions in the OS temporary directory under `manhwa-reader-img`. Covers use the original image and pages can be served unchanged or with optional 2x sharpening. The proxy allows known source image hosts; rotating Comix image URLs require a signature issued by the source adapter. It rejects arbitrary unsigned hosts and redirects.
+`/api/img` caches originals and resized versions in the OS temporary directory under `manhwa-reader-img`. Covers use the original image and pages can be served unchanged or with optional 2x sharpening. The proxy allows known source image hosts; rotating image hosts (WeebCentral) require a signature issued by the source adapter. Set `IMAGE_SIGNING_KEY` on hosted servers so signatures survive restarts. It rejects arbitrary unsigned hosts and redirects.
 
 The Library combines manga, manhwa and anime with Planned, In progress, Completed, On hold and Dropped statuses, search, filters, sorting, grid/list display and recent-history removal. Completed/dropped titles leave Continue reading/watching while staying in the Library.
 

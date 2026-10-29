@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
+import { connection } from "next/server";
 import {
   browseSeries,
   getLatestUpdates,
@@ -15,8 +16,12 @@ import { TimeAgo } from "@/components/TimeAgo";
 
 type BrowseOpts = Parameters<typeof browseSeries>[0];
 
-/** A source being down hides its shelf instead of failing the whole home page. */
+/**
+ * A source being down hides its shelf instead of failing the whole home page. Shelves render
+ * per request (cached for minutes), so builds never depend on a source being reachable.
+ */
 async function browseOrEmpty(opts: BrowseOpts) {
+  await connection();
   return browseSeries(opts).catch(() => ({ series: [] as Awaited<ReturnType<typeof browseSeries>>["series"] }));
 }
 
@@ -148,6 +153,7 @@ async function SeriesShelf({
 }
 
 async function Latest() {
+  await connection();
   const entries = await getLatestUpdates("manhwa").catch(() => []);
   if (!entries.length) return null;
   return (

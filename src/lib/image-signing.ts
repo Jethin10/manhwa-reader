@@ -4,10 +4,12 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-// A local key lets the proxy accept rotating CDN hosts only for image URLs
-// discovered by a source adapter. It never accepts arbitrary user-supplied hosts.
+// A key lets the proxy accept rotating CDN hosts only for image URLs discovered by a
+// source adapter. It never accepts arbitrary user-supplied hosts. Hosted servers set
+// IMAGE_SIGNING_KEY so signed URLs survive restarts; locally a random key is kept on disk.
 let key: Buffer | undefined;
 function signingKey() {
+  if (!key && process.env.IMAGE_SIGNING_KEY) key = Buffer.from(process.env.IMAGE_SIGNING_KEY);
   if (!key) {
     const dir = join(tmpdir(), "manhwa-reader-img");
     mkdirSync(dir, { recursive: true });
