@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manhwa Reader — Architecture</title>
+<style>
+  :root {
+    --bg: #f5f5f7; --card: #fff; --ink: #1d1d1f; --sub: #6e6e73; --line: #d2d2d7;
+    --blue: #0071e3; --green: #248a3d; --orange: #c93400; --purple: #8944ab; --teal: #0e7c86;
+    --tint-blue: #e8f1fc; --tint-green: #e9f6ec; --tint-orange: #fdf0e8; --tint-purple: #f4ecf8; --tint-teal: #e6f4f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000; --card: #1c1c1e; --ink: #f5f5f7; --sub: #98989d; --line: #38383a;
+      --blue: #2997ff; --green: #30d158; --orange: #ff9f0a; --purple: #bf5af2; --teal: #40c8e0;
+      --tint-blue: #0a2440; --tint-green: #0d2a16; --tint-orange: #33210a; --tint-purple: #2a1533; --tint-teal: #0b2a2f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 40px 24px 56px; }
+  h1 { font-size: 32px; letter-spacing: -0.02em; margin: 0 0 4px; }
+  .lede { color: var(--sub); margin: 0 0 28px; font-size: 15px; }
+  h2 { font-size: 19px; letter-spacing: -0.01em; margin: 40px 0 12px; }
+
+  .flow { display: grid; grid-template-columns: 1fr 34px 1.55fr 34px 1fr; align-items: stretch; }
+  .lane { background: var(--card); border-radius: 18px; padding: 16px; border: 1px solid var(--line); }
+  .lane > .label { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--sub); margin-bottom: 10px; }
+  .arrow { display: flex; align-items: center; justify-content: center; color: var(--sub); font-size: 20px; }
+  .box { border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; border-left: 4px solid; }
+  .box:last-child { margin-bottom: 0; }
+  .box b { display: block; font-size: 14px; }
+  .box > span { color: var(--sub); font-size: 12.5px; }
+  .box code { font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; }
+  .blue { background: var(--tint-blue); border-color: var(--blue); }
+  .green { background: var(--tint-green); border-color: var(--green); }
+  .orange { background: var(--tint-orange); border-color: var(--orange); }
+  .purple { background: var(--tint-purple); border-color: var(--purple); }
+  .teal { background: var(--tint-teal); border-color: var(--teal); }
+
+  .server { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .server .wide { grid-column: 1 / -1; }
+  .server .box { margin: 0; }
+  .sub-lane { border: 1px dashed var(--line); border-radius: 12px; padding: 8px; }
+  .sub-lane > .label { font-size: 11px; color: var(--sub); margin: 0 0 6px 2px; font-weight: 600; }
+  .stack { display: flex; flex-direction: column; gap: 6px; }
+  .stack .box { margin: 0; }
+  .rank { display: inline-block; min-width: 18px; padding: 0 5px; margin-right: 4px; border-radius: 9px;
+    background: var(--ink); color: var(--card); font-size: 11px; text-align: center; font-weight: 600; }
+
+  .host { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px; }
+
+  ol.steps { counter-reset: s; list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+  ol.steps li { counter-increment: s; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px 10px 48px; position: relative; }
+  ol.steps li::before { content: counter(s); position: absolute; left: 14px; top: 10px; width: 22px; height: 22px; border-radius: 11px;
+    background: var(--blue); color: #fff; font-size: 12px; font-weight: 600; display: grid; place-items: center; }
+  ol.steps code, p code, td code { font: 12.5px ui-monospace, SFMono-Regular, Consolas, monospace; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+  td, th { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 13px; vertical-align: top; }
+  th { color: var(--sub); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  tr:last-child td { border-bottom: 0; }
+
+  @media (max-width: 900px) {
+    .flow { grid-template-columns: 1fr; }
+    .arrow { transform: rotate(90deg); height: 30px; }
+    .host, .cols { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Manhwa Reader — how everything works</h1>
+  <p class="lede">One Next.js 16 server scrapes five comic sources and one anime source, merges them into a single catalog, and serves it to a PWA and an Android shell. All persistent user data stays on the device.</p>
+
+  <div class="flow">
+    <!-- Clients -->
+    <section class="lane">
+      <div class="label">Clients</div>
+      <div class="box blue"><b>Browser / installed PWA</b><span>iOS-style UI, tab bar, Home Screen install via <code>manifest.ts</code></span></div>
+      <div class="box blue"><b>Android app</b><span>Capacitor WebView shell that opens the server URL (LAN or <code>MANHWA_SERVER_URL</code>)</span></div>
+      <div class="box teal"><b>Service worker</b> <span><code>sw.js</code>: shell network-first with <code>/offline</code> fallback; static cache-first; <code>/api/img</code> cache-first (up to 800 images); anime never cached</span></div>
+      <div class="box teal"><b>On-device storage</b><span><code>localStorage</code>: library and bookmarks, reading progress, preferences, JSON backup and restore</span></div>
+    </section>
+
+    <div class="arrow">⇄</div>
+
+    <!-- Server -->
+    <section class="lane">
+      <div class="label">Next.js server (Render, Node 22)</div>
+      <div class="server">
+        <div class="sub-lane wide">
+          <div class="label">Pages: server components, <code>"use cache"</code> + <code>cacheLife</code></div>
+          <div class="box green" style="margin:0"><span><code>/</code> home shelves · <code>/search</code> · <code>/series</code> · <code>/manga</code> · <code>/series/[id]</code> · <code>/series/[id]/chapter/[chapterId]</code> · <code>/anime</code> · <code>/anime/[id]</code> · <code>/bookmarks</code> · <code>/settings</code></span></div>
+        </div>
+        <div class="box purple wide"><b>unified.ts: best-copy engine</b><span><code>findMirrors</code> searches every source for the same title and matches on normalized titles. It merges the chapter lists, then picks the highest-quality source that has each chapter (<code>versionsOf</code>). Mirror search times out after 10 s and uploads after 20 s, so a dead source never blocks the page.</span></div>
+        <div class="box purple wide"><b>catalog.ts: provider registry</b><span>One interface per source: <code>browse · series · chapters · chapter · pages</code>. Ids are prefixed by source, e.g. <code>mangakatana~21708~c200</code></span></div>
+        <div class="box orange"><b><code>/api/img</code> image proxy</b><span>Host allowlist, HMAC-signed URLs (<code>IMAGE_SIGNING_KEY</code>), per-source Referer, disk cache in <code>tmp/manhwa-reader-img</code>, HD option</span></div>
+        <div class="box orange"><b><code>/api/anime/*</code></b><span><code>servers</code>, <code>stream</code> and <code>media</code>: resolve and proxy HLS through signed URLs</span></div>
+        <div class="box green"><b><code>source-http.ts</code></b><span>Plain-HTTP fetch with a browser user agent. Pages are parsed with cheerio. No headless browser.</span></div>
+        <div class="box green"><b><code>/api/health</code></b><span>Returns <code>{ ok, uptime }</code> without touching any source</span></div>
+      </div>
+    </section>
+
+    <div class="arrow">⇄</div>
+
+    <!-- Sources -->
+    <section class="lane">
+      <div class="label">Upstream sources</div>
+      <div class="sub-lane">
+        <div class="label">Comics, in quality order</div>
+        <div class="stack">
+          <div class="box purple"><b><span class="rank">1</span>Asura Scans</b><span>HD official-style manhwa</span></div>
+          <div class="box purple"><b><span class="rank">2</span>MangaDex</b><span>JSON API, scanlation groups</span></div>
+          <div class="box purple"><b><span class="rank">2</span>WeebCentral</b><span>Large catalog, signed images</span></div>
+          <div class="box purple"><b><span class="rank">2</span>MangaKatana</b><span>Replaces Comix, plain HTML</span></div>
+          <div class="box purple"><b><span class="rank">3</span>MangaPill</b><span>Fast fallback</span></div>
+        </div>
+      </div>
+      <div class="sub-lane" style="margin-top:8px">
+        <div class="label">Anime</div>
+        <div class="stack">
+          <div class="box orange"><b>HiAnime</b><span>Catalog and episodes; streams through the zokoanime edges</span></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <h2>Hosting and uptime (free plan)</h2>
+  <div class="host">
+    <div class="box blue"><b>GitHub: <code>Jethin10/manhwa-reader</code></b><span>Pushing to <code>main</code> triggers an auto-deploy through <code>render.yaml</code></span></div>
+    <div class="box green"><b>Render free web service</b><span><code>npm ci &amp;&amp; npm run build</code> → <code>npm start</code>. Sleeps after 15 min idle. 750 h a month covers one service.</span></div>
+    <div class="box orange"><b>UptimeRobot</b><span>GETs <code>/api/health</code> every 5 min so the service never sleeps</span></div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <h2>Reading a chapter, step by step</h2>
+      <ol class="steps">
+        <li>You open a series. <code>/series/[id]</code> loads it from its own source through <code>catalog.ts</code>.</li>
+        <li><code>unified.ts</code> searches the other four sources in parallel and keeps matching titles as mirrors.</li>
+        <li>Chapter lists are merged by number. Each chapter links to the best source that has it.</li>
+        <li>The reader page asks that provider for its page list, e.g. MangaKatana's longest script array.</li>
+        <li>Each page is rewritten to a signed <code>/api/img?…</code> URL.</li>
+        <li>The proxy checks the host and signature, fetches with the right Referer, and caches the image on disk.</li>
+        <li>The service worker caches the image on the device. Reading progress is saved to <code>localStorage</code>.</li>
+      </ol>
+    </div>
+    <div>
+      <h2>Failure handling</h2>
+      <table>
+        <tr><th>If…</th><th>Then…</th></tr>
+        <tr><td>A source is down</td><td>Its mirror search times out and the other sources still serve the chapter. Home shelves render empty instead of erroring.</td></tr>
+        <tr><td>The build runs</td><td><code>connection()</code> defers the home shelves to request time, so builds never depend on sources.</td></tr>
+        <tr><td>The phone is offline</td><td>The service worker serves the cached shell, cached pages, or <code>/offline</code>.</td></tr>
+        <tr><td>Render restarts</td><td><code>IMAGE_SIGNING_KEY</code> keeps signed image links valid. The disk image cache refills on demand.</td></tr>
+        <tr><td>Render sleeps</td><td>UptimeRobot's 5-minute ping prevents it.</td></tr>
+      </table>
+    </div>
+  </div>
+</main>
+</body>
+</html>

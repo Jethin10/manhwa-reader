@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { Chrome, Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { PreferenceEffects } from "@/components/PreferenceEffects";
-import { ServiceWorker } from "@/components/ServiceWorker";
+import { AppUpdate } from "@/components/AppUpdate";
 import "./globals.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
@@ -34,7 +34,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en" className={`${inter.variable} h-full`}>
       <body className="flex min-h-full flex-col">
         <PreferenceEffects />
-        <ServiceWorker />
+        <AppUpdate />
         <Suspense fallback={<Chrome path="" />}>
           <Header />
         </Suspense>

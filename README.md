@@ -2,6 +2,20 @@
 
 A manga, manhwa and anime app built with Next.js. It reads from five sources, opens each chapter from the best available copy, and installs on phones as a PWA or an Android app.
 
+**Open it:** https://manhwa-reader-51fe.onrender.com
+
+**Android app:** [download manhwa.apk](https://github.com/Jethin10/manhwa-reader/releases/latest/download/manhwa.apk) (latest release)
+
+## Get the app
+
+| Device | How | Updates |
+| --- | --- | --- |
+| iPhone or iPad | Open the site in Safari, then choose Share › Add to Home Screen. | Automatic. Every deploy is live the next time you open the app. |
+| Android (PWA) | Open the site in Chrome, then choose Install app. | Automatic, as above. |
+| Android (APK) | Download [manhwa.apk](https://github.com/Jethin10/manhwa-reader/releases/latest/download/manhwa.apk) and open it. You may need to allow installs from your browser. | Pages and features update with the site. When a new APK is released, the app shows **Update available**, and tapping **Update** downloads it. |
+
+The APK opens the hosted server by default. To use another server, go to Settings › Server.
+
 ## Run
 
 ```powershell
@@ -70,11 +84,13 @@ $env:MANHWA_SERVER_URL = "http://192.168.1.20:3000"  # optional: pre-fill the co
 npm run mobile:apk
 ```
 
-Building the APK needs JDK 21 and the Android SDK. The APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. Use `npm run mobile:open` to open the project in Android Studio. `npm run icons` regenerates the web and Android icons from `scripts/icon.svg`.
+Building the APK needs JDK 21 and the Android SDK. The APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
+
+Releases are automatic. When a change to `android/`, `mobile/`, `capacitor.config.ts` or `package.json` reaches `main`, `.github/workflows/android.yml` builds a signed APK, numbers it `1.0.<run>`, and publishes it as the latest release. You can also start it by hand from the Actions tab. The release key lives in the repository secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS`. Every release must be signed with the same key, or it won't install over the previous one. Use `npm run mobile:open` to open the project in Android Studio. `npm run icons` regenerates the web and Android icons from `scripts/icon.svg`.
 
 ## Host it for free
 
-`render.yaml` deploys the app to Render's free plan:
+The app runs at https://manhwa-reader-51fe.onrender.com on Render's free plan, and every push to `main` redeploys it. To set up your own copy, use `render.yaml`:
 
 1. In the Render dashboard, choose **New › Blueprint** and pick this repository.
 2. Render builds the app, generates `IMAGE_SIGNING_KEY`, and serves it at `https://<name>.onrender.com`.
@@ -92,7 +108,7 @@ Other free options:
 
 Vercel isn't recommended. Anime video streams through the app's own proxy, which would use up Vercel's free bandwidth and run into its function time limits. Each serverless instance also keeps its own disk cache.
 
-For the Android app, set `MANHWA_SERVER_URL` to the hosted address before running `npm run mobile:apk`.
+For a local Android build, set `MANHWA_SERVER_URL` to the hosted address before running `npm run mobile:apk`. The release workflow already does this.
 
 ## Anime
 

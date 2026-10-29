@@ -1,0 +1,67 @@
+# Builds the signed Android app and publishes it as the latest GitHub release.
+# Installed apps see the new release and offer it (src/components/AppUpdate.tsx).
+name: Android release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - android/**
+      - mobile/**
+      - capacitor.config.ts
+      - scripts/mobile-config.mjs
+      - package.json
+      - .github/workflows/android.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      APP_VERSION: 1.0.${{ github.run_number }}
+      MANHWA_SERVER_URL: https://manhwa-reader-51fe.onrender.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - run: npm ci
+
+      - name: Sync the native shell
+        run: npm run mobile:sync
+
+      - name: Build the signed APK
+        env:
+          ANDROID_KEYSTORE: ${{ runner.temp }}/release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$ANDROID_KEYSTORE"
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon -PversionCode=${{ github.run_number }} -PversionName=$APP_VERSION
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/manhwa.apk"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$APP_VERSION" "$RUNNER_TEMP/manhwa.apk" \
+            --title "Manhwa $APP_VERSION" --latest \
+            --notes "Android app $APP_VERSION. Opens ${MANHWA_SERVER_URL} by default. Install manhwa.apk; installed apps offer this update automatically."
