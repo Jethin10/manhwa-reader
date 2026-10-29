@@ -91,82 +91,94 @@ export function ReaderOptions({
   settings: ReaderSettings;
   onChange: (patch: Partial<ReaderSettings>) => void;
 }) {
+  const choice = <K extends keyof ReaderSettings>(
+    key: K,
+    label: string,
+    choices: readonly (readonly [string | number, string])[],
+  ) => (
+    <Option
+      key={key}
+      label={label}
+      value={s[key] as string | number}
+      choices={choices}
+      onChange={(value) =>
+        onChange({ [key]: typeof s[key] === "number" ? Number(value) : value })
+      }
+    />
+  );
+  const check = (key: keyof ReaderSettings, label: string) => (
+    <Check
+      key={key}
+      label={label}
+      checked={Boolean(s[key])}
+      onChange={(value) => onChange({ [key]: value })}
+    />
+  );
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="grid grid-cols-2 gap-4">
-        <Option
-          label="Reading mode"
-          value={s.mode}
-          choices={[
-            ["auto", "Automatic"],
-            ["scroll", "Continuous scroll"],
-            ["single", "Single page"],
-            ["spread", "Double-page spread"],
-          ]}
-          onChange={(mode) =>
-            onChange({ mode: mode as ReaderSettings["mode"] })
-          }
-        />
-        <Option
-          label="Reading direction"
-          value={s.direction}
-          choices={[
-            ["auto", "Automatic"],
-            ["rtl", "Right to left"],
-            ["ltr", "Left to right"],
-          ]}
-          onChange={(direction) =>
-            onChange({ direction: direction as ReaderSettings["direction"] })
-          }
-        />
-        <Option
-          label="Page width"
-          value={s.width}
-          choices={[
-            [640, "Narrow"],
-            [800, "Standard"],
-            [1040, "Wide"],
-            [0, "Fill screen"],
-          ]}
-          onChange={(width) => onChange({ width: Number(width) })}
-        />
-        <Option
-          label="Page scaling"
-          value={s.fit}
-          choices={[
-            ["width", "Fit width"],
-            ["height", "Fit height"],
-          ]}
-          onChange={(fit) => onChange({ fit: fit as ReaderSettings["fit"] })}
-        />
-        <Option
-          label="Reader background"
-          value={s.theme}
-          choices={[
-            ["black", "Black"],
-            ["dim", "Dim gray"],
-            ["paper", "Paper"],
-            ["sepia", "Sepia"],
-          ]}
-          onChange={(theme) =>
-            onChange({ theme: theme as ReaderSettings["theme"] })
-          }
-        />
-        <Option
-          label="Preload ahead"
-          value={s.preload}
-          choices={[
-            [1, "1 page · save data"],
-            [3, "3 pages · balanced"],
-            [5, "5 pages · faster turns"],
-          ]}
-          onChange={(preload) => onChange({ preload: Number(preload) })}
-        />
+        {choice("mode", "Reading mode", [
+          ["auto", "Automatic"],
+          ["webtoon", "Webtoon"],
+          ["webtoon-gaps", "Webtoon with gaps"],
+          ["ltr", "Left to right"],
+          ["rtl", "Right to left"],
+          ["vertical", "Vertical pages"],
+        ])}
+        {choice("scale", "Page scaling", [
+          ["screen", "Fit screen"],
+          ["width", "Fit width"],
+          ["height", "Fit height"],
+          ["original", "Original size"],
+        ])}
+        {choice("width", "Strip width", [
+          [640, "Narrow"],
+          [800, "Standard"],
+          [1040, "Wide"],
+          [0, "Fill screen"],
+        ])}
+        {choice("background", "Reader background", [
+          ["black", "Black"],
+          ["gray", "Gray"],
+          ["white", "White"],
+          ["sepia", "Sepia"],
+        ])}
+        {choice("tapLayout", "Tap layout", [
+          ["l", "L-shaped"],
+          ["sides", "Left and right"],
+          ["kindle", "Kindle"],
+          ["edge", "Both edges advance"],
+          ["off", "Menu only"],
+        ])}
+        {choice("invertTap", "Invert tap zones", [
+          ["none", "None"],
+          ["horizontal", "Horizontal"],
+          ["vertical", "Vertical"],
+          ["both", "Both"],
+        ])}
+        {choice("tint", "Color filter", [
+          ["none", "None"],
+          ["warm", "Warm"],
+          ["amber", "Amber"],
+          ["night", "Night"],
+        ])}
+        {choice("preload", "Preload ahead", [
+          [1, "1 page"],
+          [3, "3 pages"],
+          [5, "5 pages"],
+        ])}
       </div>
+      <Range
+        label="Strip side padding"
+        value={s.padding}
+        min={0}
+        max={25}
+        onChange={(padding) => onChange({ padding })}
+      />
       <Range
         label="Page brightness"
         value={s.brightness}
-        min={50}
+        min={20}
         max={120}
         onChange={(brightness) => onChange({ brightness })}
       />
@@ -177,30 +189,19 @@ export function ReaderOptions({
         max={150}
         onChange={(contrast) => onChange({ contrast })}
       />
-      <Check
-        label="HD sharpening"
-        checked={s.hd}
-        onChange={(hd) => onChange({ hd })}
-      />
-      <Check
-        label="Space between scroll pages"
-        checked={s.gap}
-        onChange={(gap) => onChange({ gap })}
-      />
-      <Check
-        label="First page alone in spreads"
-        checked={s.spreadOffset}
-        onChange={(spreadOffset) => onChange({ spreadOffset })}
-      />
-      <Check
-        label="Tap page edges to turn"
-        checked={s.tapZones}
-        onChange={(tapZones) => onChange({ tapZones })}
-      />
+      {check("spreads", "Double-page spreads")}
+      {check("spreadOffset", "First page alone in spreads")}
+      {check("animate", "Animate page turns")}
+      {check("doubleTapZoom", "Double tap to zoom in paged modes")}
+      {check("pageNumber", "Show page number")}
+      {check("keepAwake", "Keep screen awake when supported")}
+      {check("hd", "HD sharpening")}
+      {check("grayscale", "Grayscale")}
+      {check("invert", "Invert colors")}
       <p className="text-xs leading-5 text-secondary">
-        Automatic uses single pages and right-to-left turns for manga, and
-        continuous scrolling for manhwa. Background changes keep the original
-        artwork intact.
+        Automatic uses right-to-left pages for manga and continuous scrolling
+        for manhwa. Pinch to zoom, or double tap in paged modes. Tap the center
+        to show controls.
       </p>
     </div>
   );
