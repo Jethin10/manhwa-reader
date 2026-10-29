@@ -1,6 +1,6 @@
 # Manhwa
 
-A local manga reader and anime watch app, built with Next.js.
+A manga, manhwa and anime app built with Next.js. It reads from five sources, opens each chapter from the best available copy, and installs on phones as a PWA or an Android app.
 
 ## Run
 
@@ -15,11 +15,63 @@ For development, run `npm run dev -- -p 3123`.
 
 ## Reading
 
-Open `/manga` for Japanese manga, or browse `/series` and choose Asura Scans, Comix, MangaDex, or all connected sources. Results keep their source labels, chapter IDs, bookmarks, and reading history separate. Series pages link to searches on the other sources.
+Open `/manga` for Japanese manga, or browse `/series` and pick a source. Five sources are connected, ranked by image quality:
 
-Asura supplies its public catalog and free chapters. Premium and early-access chapters are omitted. Comix uses a local headless Chromium session to load its public website. It is slower on first visits, especially while collecting the chapter list and page URLs. It requires the Playwright browser installed above. Site challenges or layout changes can interrupt a source; catalog failures appear beside the results and other sources remain usable.
+| Source | Quality | Notes |
+| --- | --- | --- |
+| Asura Scans | 5 | Original-resolution webtoon scans. Premium and early-access chapters are omitted. |
+| MangaDex | 4 | Uploader originals in many languages. |
+| WeebCentral | 3 | Large English catalog. |
+| Comix | 2 | Broad catalog. Loads through a local headless Chromium, so first visits are slower. |
+| MangaPill | 1 | Fast manga releases. |
+
+"All sources" searches every source at once and removes duplicates, keeping the copy from the higher-quality source.
+
+A series page finds the same title on the other sources by matching its main and alternate titles. It then merges their chapter lists. For each chapter, the reader opens the best copy using this order:
+
+1. Copies hosted on a source come before links to an official site.
+2. Higher-quality sources come next.
+3. The source you opened breaks ties.
+
+If a source fails to load a chapter's pages, the reader moves to the next copy. The Sources card on each series lists every source that matched, how many chapters each one supplies, and any source that is currently down. A title missing from one site usually still opens from the others.
+
+Comix requires the Playwright browser installed above. Site challenges or layout changes can interrupt a source. Catalog failures appear beside the results, and the other sources stay usable.
 
 The immersive reader offers continuous scroll, single pages, and double-page spreads; independent RTL/LTR direction; spread offset; width/height fitting; black/dim/paper/sepia surrounds; image brightness/contrast; gaps; configurable preloading; and title-specific presets. Manga defaults to single-page RTL; manhwa defaults to continuous scroll. Keyboard, edge taps, swipes, chapter navigation, translation choices and saved positions are supported. Original-quality pages remain available with optional HD sharpening. Existing MangaDex bookmarks still work.
+
+## Install on a phone
+
+The interface follows Apple's design conventions:
+
+- A large-title type scale.
+- Grouped lists.
+- A frosted bottom tab bar on phones and a top navigation bar on desktop.
+- Support for safe areas around the notch and home indicator.
+
+It is also an installable PWA. It has a manifest, icons, and a service worker that caches cover and page images and shows an offline screen. To install it:
+
+- **iPhone or iPad:** open the site in Safari, then choose Share › Add to Home Screen.
+- **Android:** use Chrome's Install app option.
+
+Scraping and image processing need Node, so a server must run somewhere. To reach it from a phone on the same Wi-Fi:
+
+```powershell
+npm run build
+npm run start:lan
+```
+
+`start:lan` prints the LAN address to open on your phone.
+
+### Android app
+
+`android/` contains a Capacitor shell. On first launch it asks for your server address, then loads that server full screen with native system bars and a splash screen. To change servers later, go to Settings › Server.
+
+```powershell
+$env:MANHWA_SERVER_URL = "http://192.168.1.20:3000"  # optional: pre-fill the connect screen
+npm run mobile:apk
+```
+
+Building the APK needs JDK 21 and the Android SDK. The APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. Use `npm run mobile:open` to open the project in Android Studio. `npm run icons` regenerates the web and Android icons from `scripts/icon.svg`.
 
 ## Anime
 

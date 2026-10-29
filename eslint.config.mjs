@@ -9,6 +9,7 @@ const eslintConfig = defineConfig([
   globalIgnores([
     ".source-research/**",
     "artifacts/**",
+    "android/**",
     // Default ignores of eslint-config-next:
     ".next/**",
     "out/**",

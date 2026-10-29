@@ -13,6 +13,13 @@ import { Cover, SeriesCard } from "@/components/SeriesCard";
 import { Shelf, ShelfItem } from "@/components/Shelf";
 import { TimeAgo } from "@/components/TimeAgo";
 
+type BrowseOpts = Parameters<typeof browseSeries>[0];
+
+/** A source being down hides its shelf instead of failing the whole home page. */
+async function browseOrEmpty(opts: BrowseOpts) {
+  return browseSeries(opts).catch(() => ({ series: [] as Awaited<ReturnType<typeof browseSeries>>["series"] }));
+}
+
 export default function Home() {
   return (
     <div className="space-y-11 pb-8 lg:space-y-14">
@@ -53,13 +60,13 @@ export default function Home() {
 }
 
 async function Featured() {
-  let { series } = await browseSeries({
+  let { series } = await browseOrEmpty({
     source: "asura",
     order: "followedCount",
     limit: 8,
   });
   if (!series.length)
-    ({ series } = await browseSeries({
+    ({ series } = await browseOrEmpty({
       source: "mangadex",
       order: "followedCount",
       limit: 8,
@@ -75,12 +82,13 @@ async function Featured() {
 }
 
 async function TopCharts() {
-  const { series } = await browseSeries({
+  const { series } = await browseOrEmpty({
     source: "asura",
     order: "followedCount",
     limit: 12,
     page: 2,
   });
+  if (!series.length) return null;
   const columns: (typeof series)[] = [];
   for (let i = 0; i < series.length; i += 3) columns.push(series.slice(i, i + 3));
   return (
@@ -120,12 +128,13 @@ async function SeriesShelf({
   order: "rating" | "createdAt" | "followedCount";
   href: string;
 }) {
-  const { series } = await browseSeries({
+  const { series } = await browseOrEmpty({
     source: "mangadex",
     type,
     order,
     limit: 16,
   });
+  if (!series.length) return null;
   const stats = await getStats(series.map((s) => s.id));
   return (
     <Shelf title={title} href={href}>
@@ -139,7 +148,8 @@ async function SeriesShelf({
 }
 
 async function Latest() {
-  const entries = await getLatestUpdates("manhwa");
+  const entries = await getLatestUpdates("manhwa").catch(() => []);
+  if (!entries.length) return null;
   return (
     <section className="gutter mx-auto max-w-[1440px]">
       <div className="mb-2 flex items-baseline justify-between">
