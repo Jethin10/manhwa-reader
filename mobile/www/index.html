@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <title>Manhwa</title>
+    <script src="config.js"></script>
+    <style>
+      :root {
+        --accent: #0a84ff;
+        --top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+        --bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
+      }
+      * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
+      html, body { height: 100%; background: #000; color: #fff; }
+      body {
+        font: 17px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, "Segoe UI", system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        display: flex; flex-direction: column; justify-content: center;
+        padding: calc(var(--top) + 24px) 24px calc(var(--bottom) + 24px);
+      }
+      main { width: 100%; max-width: 400px; margin: 0 auto; text-align: center; }
+      img { width: 88px; height: 88px; border-radius: 22px; box-shadow: 0 12px 40px rgba(10,132,255,.25); }
+      h1 { font-size: 34px; line-height: 41px; letter-spacing: -.022em; margin-top: 22px; }
+      p { color: rgba(235,235,245,.62); font-size: 15px; line-height: 20px; margin-top: 8px; }
+      form { margin-top: 32px; text-align: left; }
+      label { display: block; font-size: 13px; color: rgba(235,235,245,.62); text-transform: uppercase; letter-spacing: .02em; margin: 0 16px 8px; }
+      input {
+        width: 100%; height: 50px; border: 0; border-radius: 12px; padding: 0 16px;
+        background: #1c1c1e; color: #fff; font: inherit; outline: none;
+      }
+      input:focus { box-shadow: 0 0 0 2px var(--accent); }
+      button {
+        width: 100%; height: 50px; margin-top: 16px; border: 0; border-radius: 999px;
+        background: #fff; color: #000; font: 600 17px/1 inherit; font-family: inherit;
+        transition: transform .2s, opacity .2s;
+      }
+      button:active { transform: scale(.97); opacity: .85; }
+      button:disabled { opacity: .5; }
+      .hint { font-size: 13px; line-height: 18px; color: rgba(235,235,245,.34); margin-top: 16px; text-align: center; }
+      .error { color: #ff453a; min-height: 18px; font-size: 13px; margin-top: 12px; text-align: center; }
+      code { color: rgba(235,235,245,.62); }
+      .busy main { opacity: 0; }
+      .spinner { position: fixed; inset: 0; display: none; place-items: center; }
+      .busy .spinner { display: grid; }
+      .spinner span { width: 28px; height: 28px; border-radius: 50%; border: 2.5px solid rgba(255,255,255,.2); border-top-color: #fff; animation: spin .8s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body>
+    <div class="spinner" aria-hidden="true"><span></span></div>
+    <main>
+      <img src="icon.png" alt="" />
+      <h1>Manhwa</h1>
+      <p>Connect to your Manhwa server to start reading.</p>
+      <form id="form">
+        <label for="url">Server address</label>
+        <input id="url" type="url" inputmode="url" autocomplete="url" autocapitalize="none" autocorrect="off"
+          spellcheck="false" placeholder="http://192.168.1.20:3000" required />
+        <button id="go" type="submit">Connect</button>
+        <div class="error" id="error" role="alert"></div>
+        <p class="hint">Run <code>npm run start:lan</code> on your computer and enter the address it prints.
+          Use the same Wi-Fi network, or a public HTTPS address.</p>
+      </form>
+    </main>
+    <script>
+      const KEY = "manhwa:server";
+      const $ = (id) => document.getElementById(id);
+      const params = new URLSearchParams(location.search);
+      const clean = (v) => {
+        v = (v || "").trim().replace(/\/+$/, "");
+        if (v && !/^https?:\/\//i.test(v)) v = "http://" + v;
+        return v;
+      };
+
+      // Any response, even an error status, proves the server is reachable.
+      async function reachable(url) {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 6000);
+        try {
+          await fetch(url + "/manifest.webmanifest", { mode: "no-cors", cache: "no-store", signal: ctrl.signal });
+          return true;
+        } catch {
+          return false;
+        } finally {
+          clearTimeout(t);
+        }
+      }
+
+      async function connect(url, auto) {
+        $("error").textContent = "";
+        $("go").disabled = true;
+        document.body.classList.add("busy");
+        if (await reachable(url)) {
+          localStorage.setItem(KEY, url);
+          location.replace(url + "/");
+          return;
+        }
+        document.body.classList.remove("busy");
+        $("go").disabled = false;
+        $("error").textContent = auto
+          ? "Couldn't reach your server. Check that it's running, then try again."
+          : "No Manhwa server answered at that address.";
+      }
+
+      const saved = clean(localStorage.getItem(KEY) || window.MANHWA_SERVER);
+      $("url").value = saved;
+      $("form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const url = clean($("url").value);
+        if (url) connect(url, false);
+      });
+      // "?change" comes from Preferences in the app, to pick a different server.
+      if (saved && !params.has("change")) connect(saved, true);
+    </script>
+  </body>
+</html>

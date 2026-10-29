@@ -23,8 +23,9 @@
 }
 
 :root {
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* env() covers browsers; the native Android shell also injects --safe-area-inset-* variables. */
+  --safe-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
   --tabbar-h: calc(56px + var(--safe-bottom));
 }
 

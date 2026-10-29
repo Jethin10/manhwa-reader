@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Manhwa</string>
+    <string name="title_activity_main">Manhwa</string>
+    <string name="package_name">com.jethin.manhwa</string>
+    <string name="custom_url_scheme">com.jethin.manhwa</string>
+</resources>

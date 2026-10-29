@@ -1,6 +1,6 @@
 // Renders scripts/icon.svg into the PWA, Apple and Android launcher sizes.
 import sharp from "sharp";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 const svg = readFileSync(new URL("./icon.svg", import.meta.url));
@@ -33,6 +33,26 @@ if (existsSync(res)) {
     await out(`${res}/mipmap-${d}/ic_launcher.png`, size);
     await out(`${res}/mipmap-${d}/ic_launcher_round.png`, size, { round: true });
     await out(`${res}/mipmap-${d}/ic_launcher_foreground.png`, Math.round(size * 2.25), { padding: 0.2 });
+  }
+}
+// Native splash screens: black, icon centered, same sizes as the platform template.
+import { readdirSync } from "node:fs";
+if (existsSync(res)) {
+  for (const dir of readdirSync(res).filter((d) => d.startsWith("drawable"))) {
+    const file = `${res}/${dir}/splash.png`;
+    if (!existsSync(file)) continue;
+    const { width, height } = await sharp(file).metadata();
+    const size = Math.round(Math.min(width, height) * 0.28);
+    const icon = await sharp(svg, { density: 512 })
+      .resize(size, size)
+      .composite([{ input: Buffer.from(`<svg width="${size}" height="${size}"><rect width="${size}" height="${size}" rx="${size * 0.225}"/></svg>`), blend: "dest-in" }])
+      .png()
+      .toBuffer();
+    const out = await sharp({ create: { width, height, channels: 3, background: "#000000" } })
+      .composite([{ input: icon, gravity: "center" }])
+      .png()
+      .toBuffer();
+    writeFileSync(file, out);
   }
 }
 console.log("icons written");

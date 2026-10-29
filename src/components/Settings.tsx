@@ -11,6 +11,7 @@ import {
   usePreferences,
 } from "@/lib/preferences";
 import { exportBackup, importBackup } from "@/lib/backup";
+import { NativeServerLink } from "./NativeServerLink";
 import {
   Check,
   Option,
@@ -41,6 +42,7 @@ export function Settings() {
       <p className="t-sub mt-1 text-secondary">
         Reading, watching, and accessibility preferences stay on this device.
       </p>
+      <NativeServerLink />
       <nav
         aria-label="Preference sections"
         className="no-scrollbar mt-7 flex gap-2 overflow-auto"
