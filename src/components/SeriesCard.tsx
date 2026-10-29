@@ -66,11 +66,7 @@ export function SeriesCard({
   sizes?: string;
 }) {
   return (
-    <Link
-      href={`/series/${series.id}`}
-      prefetch={!series.id.startsWith("comix~")}
-      className="group pressable block"
-    >
+    <Link href={`/series/${series.id}`} className="group pressable block">
       <Cover
         cover={series.cover}
         alt={series.title}

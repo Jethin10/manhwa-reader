@@ -36,7 +36,7 @@ export async function findMirrors(id: string): Promise<string[]> {
       for (const q of queries) {
         const page = await withTimeout(
           providers[p.id].browse({ q, type: "all", limit: 12 }),
-          p.id === "comix" ? 20000 : 10000,
+          10000,
           p.name,
         );
         const hit = page.series.find((s) => sameTitle(s, series));
@@ -61,7 +61,7 @@ export const getMergedChapters = cache(async (id: string) => {
   const mirrors = await findMirrors(id).catch(() => [] as string[]);
   const ids = [id, ...mirrors];
   const lists = await Promise.allSettled(
-    ids.map((x) => withTimeout(getAllUploads(x), x.startsWith("comix~") ? 45000 : 20000, sourceOf(x))),
+    ids.map((x) => withTimeout(getAllUploads(x), 20000, sourceOf(x))),
   );
   const uploads: Chapter[] = [];
   const sources: SourceSummary[] = ids.map((x, i) => {

@@ -6,7 +6,7 @@ export const PROVIDERS = [
   { id: "asura", name: "Asura Scans", quality: 5, note: "Original-resolution webtoon scans" },
   { id: "mangadex", name: "MangaDex", quality: 4, note: "Uploader originals, many languages" },
   { id: "weebcentral", name: "WeebCentral", quality: 3, note: "Large English catalog" },
-  { id: "comix", name: "Comix", quality: 2, note: "Broad catalog, slower to load" },
+  { id: "mangakatana", name: "MangaKatana", quality: 2, note: "Broad catalog of manga and manhwa" },
   { id: "mangapill", name: "MangaPill", quality: 1, note: "Fast manga releases" },
 ] as const;
 export type ProviderId = (typeof PROVIDERS)[number]["id"];

@@ -1,6 +1,6 @@
 import * as dex from "./mangadex";
 import * as asura from "./asura";
-import * as comix from "./comix";
+import * as mangakatana from "./mangakatana";
 import * as weebcentral from "./weebcentral";
 import * as mangapill from "./mangapill";
 import { PROVIDERS, providerOf, qualityOf, type ProviderId, type SourceId } from "./sources";
@@ -43,13 +43,12 @@ export const providers: Record<ProviderId, Provider> = {
     chapter: asura.getAsuraChapter,
     pages: asura.getAsuraPages,
   },
-  comix: {
-    browse: comix.browseComix,
-    series: comix.getComixSeries,
-    chapters: comix.getComixChapters,
-    uploads: comix.getComixUploads,
-    chapter: comix.getComixChapter,
-    pages: comix.getComixPages,
+  mangakatana: {
+    browse: mangakatana.browseMangaKatana,
+    series: mangakatana.getMangaKatanaSeries,
+    chapters: mangakatana.getMangaKatanaChapters,
+    chapter: mangakatana.getMangaKatanaChapter,
+    pages: mangakatana.getMangaKatanaPages,
   },
   weebcentral: {
     browse: weebcentral.browseWeebCentral,
@@ -84,7 +83,7 @@ export async function browseSeries(opts: dex.BrowseOptions & { source?: SourceId
   const all = source === "all";
   // MangaPill has no popularity sort, so it only joins all-source results for searches.
   const ids: ProviderId[] = all
-    ? (["asura", "mangadex", "weebcentral", "comix", "mangapill"] as const).filter(
+    ? (["asura", "mangadex", "weebcentral", "mangakatana", "mangapill"] as const).filter(
         (p) => p !== "mangapill" || !!opts.q,
       )
     : [source];

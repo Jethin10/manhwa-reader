@@ -9,7 +9,7 @@ const ALLOWED = [
   /^uploads\.mangadex\.org$/,
   /\.mangadex\.network$/,
   /^cdn\.asurascans\.com$/,
-  /^(?:static|cdn)\.comix\.to$/,
+  /^(?:i\d+\.)?mangakatana\.com$/,
   /^hianime\.tr$/,
   /^cdn\.anipixcdn\.co$/,
   /^cdn\.myanimelist\.net$/,
@@ -19,7 +19,6 @@ const ALLOWED = [
 // Hosts that refuse images without their own site as Referer.
 const REFERERS: [RegExp, string][] = [
   [/asurascans\.com$/, "https://asurascans.com/"],
-  [/comix\.to$/, "https://comix.to/"],
   [/^hianime\.tr$/, "https://hianime.tr/"],
   [/readdetectiveconan\.com$/, "https://mangapill.com/"],
 ];

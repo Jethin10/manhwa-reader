@@ -193,7 +193,7 @@ async function Browse({
             ))}
           </select>
           <select
-            disabled={source === "comix" || source === "all"}
+            disabled={source === "mangakatana" || source === "all"}
             name="status"
             defaultValue={status}
             className={select}
