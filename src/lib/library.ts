@@ -16,64 +16,157 @@ export type HistoryEntry = SavedSeries & {
   progress?: number;
 };
 
+/** Reading modes, as in Mihon: long strip for webtoons, pagers for print comics. */
+export type ReadingMode =
+  "auto" | "webtoon" | "webtoon-gaps" | "ltr" | "rtl" | "vertical";
+/** Where taps turn pages; see lib/tap-zones. */
+export type TapLayout = "l" | "kindle" | "edge" | "sides" | "off";
+
 export type ReaderSettings = {
-  /** Max page width in CSS px; 0 = fit the screen */
+  mode: ReadingMode;
+  // Paged modes
+  scale: "screen" | "width" | "height" | "original";
+  spreads: boolean;
+  spreadOffset: boolean;
+  animate: boolean;
+  // Long strip
+  /** Side padding as a percentage of the screen width */
+  padding: number;
+  /** Max strip width on large screens in CSS px; 0 = fill */
   width: number;
-  /** Sharper 2x upscaling for low-resolution uploads */
-  hd: boolean;
-  /** Small gap between pages */
-  gap: boolean;
-  mode: "auto" | "scroll" | "single" | "spread";
-  direction: "auto" | "rtl" | "ltr";
-  fit: "width" | "height";
-  theme: "black" | "dim" | "paper" | "sepia";
+  // Navigation
+  tapLayout: TapLayout;
+  invertTap: "none" | "horizontal" | "vertical" | "both";
+  doubleTapZoom: boolean;
+  volumeKeys: boolean;
+  volumeInvert: boolean;
+  // Display
+  background: "black" | "gray" | "white" | "sepia";
+  pageNumber: boolean;
+  keepAwake: boolean;
+  // Filters
   brightness: number;
   contrast: number;
-  spreadOffset: boolean;
+  grayscale: boolean;
+  invert: boolean;
+  tint: "none" | "warm" | "amber" | "night";
+  // Loading
+  hd: boolean;
   preload: number;
-  tapZones: boolean;
 };
 
 export const DEFAULT_READER: ReaderSettings = {
-  width: 800,
-  hd: true,
-  gap: false,
   mode: "auto",
-  direction: "auto",
-  fit: "width",
-  theme: "black",
+  scale: "screen",
+  spreads: false,
+  spreadOffset: false,
+  animate: true,
+  padding: 0,
+  width: 800,
+  tapLayout: "l",
+  invertTap: "none",
+  doubleTapZoom: true,
+  volumeKeys: true,
+  volumeInvert: false,
+  background: "black",
+  pageNumber: true,
+  keepAwake: true,
   brightness: 100,
   contrast: 100,
-  spreadOffset: false,
+  grayscale: false,
+  invert: false,
+  tint: "none",
+  hd: true,
   preload: 3,
-  tapZones: true,
 };
+
+type Legacy = {
+  direction?: string;
+  gap?: boolean;
+  fit?: string;
+  theme?: string;
+  tapZones?: boolean;
+};
+
 export function normalizeReader(raw: unknown): ReaderSettings {
-  const r =
-    raw && typeof raw === "object" ? (raw as Partial<ReaderSettings>) : {};
+  const r = (
+    raw && typeof raw === "object" ? raw : {}
+  ) as Partial<ReaderSettings> & Legacy;
+  const pick = <T extends string>(
+    v: unknown,
+    list: readonly T[],
+    fallback: T,
+  ): T => (list.includes(v as T) ? (v as T) : fallback);
   const number = (v: unknown, min: number, max: number, fallback: number) =>
     typeof v === "number" && Number.isFinite(v)
       ? Math.min(max, Math.max(min, v))
       : fallback;
+  const bool = (v: unknown, fallback: boolean) =>
+    typeof v === "boolean" ? v : fallback;
+
+  // Settings saved before the Mihon-style reader used scroll/single/spread + direction.
+  const legacyMode = (r.mode as string | undefined) ?? "";
+  const legacyDir =
+    r.direction === "rtl" || r.direction === "ltr" ? r.direction : null;
+  const mode: ReadingMode =
+    legacyMode === "scroll"
+      ? r.gap
+        ? "webtoon-gaps"
+        : "webtoon"
+      : legacyMode === "single" || legacyMode === "spread"
+        ? (legacyDir ?? "auto")
+        : pick(
+            legacyMode,
+            ["auto", "webtoon", "webtoon-gaps", "ltr", "rtl", "vertical"],
+            "auto",
+          );
+  const legacyBackground =
+    { dim: "gray", paper: "white" }[r.theme ?? ""] ?? r.theme;
+
   return {
+    mode,
+    scale: pick(
+      r.scale ??
+        (r.fit === "height"
+          ? "height"
+          : r.fit === "width"
+            ? "width"
+            : undefined),
+      ["screen", "width", "height", "original"],
+      "screen",
+    ),
+    spreads: bool(r.spreads, legacyMode === "spread"),
+    spreadOffset: bool(r.spreadOffset, false),
+    animate: bool(r.animate, true),
+    padding: number(r.padding, 0, 25, 0),
     width: [0, 640, 800, 1040].includes(r.width ?? -1) ? r.width! : 800,
-    hd: r.hd !== false,
-    gap: r.gap === true,
-    mode: ["auto", "scroll", "single", "spread"].includes(r.mode ?? "")
-      ? r.mode!
-      : "auto",
-    direction: ["auto", "rtl", "ltr"].includes(r.direction ?? "")
-      ? r.direction!
-      : "auto",
-    fit: r.fit === "height" ? "height" : "width",
-    theme: ["black", "dim", "paper", "sepia"].includes(r.theme ?? "")
-      ? r.theme!
-      : "black",
-    brightness: number(r.brightness, 50, 120, 100),
+    tapLayout: pick(
+      r.tapLayout ?? (r.tapZones === false ? "off" : undefined),
+      ["l", "kindle", "edge", "sides", "off"],
+      "l",
+    ),
+    invertTap: pick(
+      r.invertTap,
+      ["none", "horizontal", "vertical", "both"],
+      "none",
+    ),
+    doubleTapZoom: bool(r.doubleTapZoom, true),
+    volumeKeys: bool(r.volumeKeys, true),
+    volumeInvert: bool(r.volumeInvert, false),
+    background: pick(
+      r.background ?? legacyBackground,
+      ["black", "gray", "white", "sepia"],
+      "black",
+    ),
+    pageNumber: bool(r.pageNumber, true),
+    keepAwake: bool(r.keepAwake, true),
+    brightness: number(r.brightness, 20, 120, 100),
     contrast: number(r.contrast, 75, 150, 100),
-    spreadOffset: r.spreadOffset === true,
+    grayscale: bool(r.grayscale, false),
+    invert: bool(r.invert, false),
+    tint: pick(r.tint, ["none", "warm", "amber", "night"], "none"),
+    hd: r.hd !== false,
     preload: [1, 3, 5].includes(r.preload ?? 0) ? r.preload! : 3,
-    tapZones: r.tapZones !== false,
   };
 }
 
@@ -82,6 +175,7 @@ const HISTORY = "mr:history";
 const READER = "mr:reader";
 const POSITIONS = "mr:positions";
 const SERIES_READER = "mr:reader-series";
+const SERIES_MODE = "mr:reader-mode";
 const EVENT = "mr:library";
 
 function read<T>(key: string, fallback: T): T {
@@ -227,6 +321,21 @@ export function useSeriesReaderPreset(id: string) {
     () => !!read<Record<string, ReaderSettings>>(SERIES_READER, {})[id],
     () => false,
   );
+}
+
+/** Reading mode chosen for one series in the reader (like Mihon, the mode sticks per title). */
+export function useSeriesMode(id: string): ReadingMode | null {
+  return useSyncExternalStore(
+    subscribe,
+    () => read<Record<string, ReadingMode>>(SERIES_MODE, {})[id] ?? null,
+    () => null,
+  );
+}
+export function setSeriesMode(id: string, mode: ReadingMode | null) {
+  const map = read<Record<string, ReadingMode>>(SERIES_MODE, {});
+  if (mode) map[id] = mode;
+  else delete map[id];
+  write(SERIES_MODE, Object.fromEntries(Object.entries(map).slice(-500)));
 }
 
 export function removeHistory(id: string) {

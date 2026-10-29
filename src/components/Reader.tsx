@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Chapter, PageImage } from "@/lib/catalog";
-import { coverSrc, retryUrl } from "@/lib/images";
+import type { Chapter, PageImage as Page } from "@/lib/catalog";
 import {
   getSavedPage,
   recordRead,
@@ -14,15 +13,25 @@ import {
   saveSeriesReaderSettings,
   clearSeriesReaderSettings,
   useSeriesReaderPreset,
+  useSeriesMode,
+  setSeriesMode,
   type ReaderSettings,
   type SavedSeries,
 } from "@/lib/library";
-import { ChevronLeft, ChevronRight, ListIcon, SearchIcon } from "./Icons";
+import { tapAction, tapOverlay, type TapAction } from "@/lib/tap-zones";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ListIcon,
+  SearchIcon,
+  SlidersIcon,
+} from "./Icons";
 import { ReaderOptions } from "./PreferenceControls";
+import { PagedViewer, type PagerItem } from "./reader/PagedViewer";
+import { PageImage } from "./reader/PageImage";
 
 type ChapterRef = Pick<Chapter, "id" | "number" | "title">;
 type Version = Pick<Chapter, "id" | "group" | "pages">;
-
 const label = (c: { number: string | null; title?: string | null }) =>
   c.number ? `Chapter ${c.number}` : (c.title ?? "Oneshot");
 
@@ -39,82 +48,121 @@ export function Reader({
   chapter: Chapter;
   chapters: ChapterRef[];
   versions: Version[];
-  pages: PageImage[];
+  pages: Page[];
   prevId: string | null;
   nextId: string | null;
 }) {
   const router = useRouter();
-  const settings = useReaderSettings(series.id);
+  const globalSettings = useReaderSettings(series.id);
+  const seriesMode = useSeriesMode(series.id);
+  const settings = useMemo(
+    () => ({ ...globalSettings, mode: seriesMode ?? globalSettings.mode }),
+    [globalSettings, seriesMode],
+  );
   const seriesPreset = useSeriesReaderPreset(series.id);
-  const manga = series.type.toLowerCase() === "manga";
   const mode =
-    settings.mode === "auto" ? (manga ? "single" : "scroll") : settings.mode;
-  const direction =
-    settings.direction === "auto"
-      ? manga
+    settings.mode === "auto"
+      ? series.type.toLowerCase() === "manga"
         ? "rtl"
-        : "ltr"
-      : settings.direction;
+        : "webtoon"
+      : settings.mode;
+  const strip = mode === "webtoon" || mode === "webtoon-gaps";
+  const rtl = mode === "rtl";
   const [chrome, setChrome] = useState(true);
   const [sheet, setSheet] = useState<null | "chapters" | "settings">(null);
   const [current, setCurrent] = useState(0);
+  const [transition, setTransition] = useState<null | "prev" | "next">(null);
   const [resumeTo, setResumeTo] = useState<number | null>(null);
+  const [showZones, setShowZones] = useState(false);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const progressStarted = useRef(false);
+  const total = pages.length;
   const href = useCallback(
-    (cid: string) => `/series/${series.id}/chapter/${cid}`,
+    (id: string) => `/series/${series.id}/chapter/${id}`,
     [series.id],
   );
-  const nextChapter = chapters.find((c) => c.id === nextId);
-  const total = pages.length;
-  const groups = useMemo(() => {
-    const result: number[][] = [];
-    let i = 0;
-    if (mode === "spread" && settings.spreadOffset && total) {
-      result.push([0]);
-      i = 1;
+  const items = useMemo(() => {
+    const list: PagerItem[] = [{ kind: "prev" }];
+    for (let i = 0; i < total;) {
+      const count =
+        settings.spreads && !(i === 0 && settings.spreadOffset) && i + 1 < total
+          ? 2
+          : 1;
+      list.push({
+        kind: "pages",
+        pages: Array.from({ length: count }, (_, k) => i + k),
+      });
+      i += count;
     }
-    for (; i < total; i += mode === "spread" ? 2 : 1)
-      result.push(mode === "spread" && i + 1 < total ? [i, i + 1] : [i]);
-    return result;
-  }, [mode, settings.spreadOffset, total]);
-  const groupIndex = Math.max(
-    0,
-    groups.findIndex((g) => g.includes(current)),
-  );
-  const visiblePages = useMemo(
-    () => groups[groupIndex] ?? [],
-    [groups, groupIndex],
-  );
-  const progressStarted = useRef(false);
-  const swipe = useRef({ x: 0, y: 0, skipClick: false });
+    list.push({ kind: "next" });
+    return list;
+  }, [total, settings.spreads, settings.spreadOffset]);
+  const itemIndex = transition
+    ? transition === "prev"
+      ? 0
+      : items.length - 1
+    : Math.max(
+        1,
+        items.findIndex((x) => x.kind === "pages" && x.pages.includes(current)),
+      );
   const goTo = useCallback(
-    (index: number) => {
+    (page: number) => {
+      const target = Math.max(0, Math.min(total - 1, page));
       progressStarted.current = true;
-      const target = Math.max(0, Math.min(total - 1, index));
-      if (mode === "scroll")
-        pageRefs.current[target]?.scrollIntoView({ block: "start" });
-      else {
-        setCurrent(target);
-        setChrome(true);
-      }
+      setTransition(null);
+      setCurrent(target);
+      if (strip) pageRefs.current[target]?.scrollIntoView({ block: "start" });
     },
-    [mode, total],
+    [strip, total],
   );
   const turn = useCallback(
     (delta: number) => {
-      const group = groups[groupIndex + delta];
-      if (group) goTo(group[0]);
-      else if (delta > 0 && nextId) router.push(href(nextId));
-      else if (delta < 0 && prevId) router.push(href(prevId));
+      if (strip) {
+        window.scrollBy({
+          top: delta * window.innerHeight * 0.85,
+          behavior: settings.animate ? "smooth" : "instant",
+        });
+        return;
+      }
+      const target = items[itemIndex + delta];
+      if (target?.kind === "pages") goTo(target.pages[0]);
+      else if (target) setTransition(target.kind);
+      else {
+        const id = delta > 0 ? nextId : prevId;
+        if (id) router.push(href(id));
+      }
     },
-    [groups, groupIndex, goTo, nextId, prevId, router, href],
+    [
+      strip,
+      settings.animate,
+      items,
+      itemIndex,
+      goTo,
+      nextId,
+      prevId,
+      router,
+      href,
+    ],
   );
-  const changeSettings = (patch: Partial<ReaderSettings>) =>
-    seriesPreset
-      ? saveSeriesReaderSettings(series.id, { ...settings, ...patch })
-      : updateReaderSettings(patch);
+  const onTap = (action: TapAction) => {
+    if (showZones) {
+      setShowZones(false);
+      return;
+    }
+    if (action === "menu") setChrome((c) => !c);
+    else turn(action === "next" ? 1 : -1);
+  };
+  const changeSettings = (patch: Partial<ReaderSettings>) => {
+    if (patch.mode !== undefined) setSeriesMode(series.id, patch.mode);
+    const rest = { ...patch };
+    delete rest.mode;
+    if (Object.keys(rest).length) {
+      if (seriesPreset)
+        saveSeriesReaderSettings(series.id, { ...globalSettings, ...rest });
+      else updateReaderSettings(rest);
+    }
+  };
 
-  // History + resume prompt
   useEffect(() => {
     recordRead({
       ...series,
@@ -122,60 +170,53 @@ export function Reader({
       chapterNumber: chapter.number,
     });
     const saved = getSavedPage(chapter.id);
-    if (!(saved > 0 && saved < total - 1)) return;
-    const t = setTimeout(() => setResumeTo(saved), 500);
-    return () => clearTimeout(t);
+    if (saved > 0 && saved < total - 1) {
+      const timer = setTimeout(() => setResumeTo(saved), 300);
+      return () => clearTimeout(timer);
+    }
   }, [series, chapter.id, chapter.number, total]);
 
-  // Chrome follows scroll direction; IntersectionObserver tracks pages without
-  // measuring every image on every scroll frame.
   useEffect(() => {
-    let lastY = window.scrollY;
-    let raf = 0;
-    const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        const y = window.scrollY;
-        const nearEnd =
-          y + window.innerHeight > document.documentElement.scrollHeight - 400;
-        if (y < 80 || nearEnd) setChrome(true);
-        else if (y > lastY + 8) setChrome(false);
-        else if (y < lastY - 24) setChrome(true);
-        lastY = y;
-      });
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("scroll", onScroll);
-    };
-  }, []);
-  useEffect(() => {
-    if (mode !== "scroll") return;
-    const active = new Set<number>();
+    if (!strip) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        for (const entry of entries) {
-          const index = Number((entry.target as HTMLElement).dataset.pageIndex);
-          if (entry.isIntersecting) active.add(index);
-          else active.delete(index);
-        }
-        if (active.size) {
-          const page = Math.max(...active);
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible.length) {
+          const page = Number(
+            (visible[0].target as HTMLElement).dataset.pageIndex,
+          );
           if (page > 0) progressStarted.current = true;
           setCurrent(page);
         }
       },
-      { rootMargin: "-10% 0px -40% 0px", threshold: 0 },
+      { rootMargin: "0px 0px -65% 0px", threshold: 0 },
     );
-    pageRefs.current.slice(0, total).forEach((el, i) => {
-      if (el) {
-        el.dataset.pageIndex = String(i);
-        observer.observe(el);
-      }
-    });
+    pageRefs.current.forEach((el) => el && observer.observe(el));
     return () => observer.disconnect();
-  }, [mode, total, chapter.id]);
+  }, [strip, total]);
+
+  useEffect(() => {
+    if (!strip) return;
+    let last = window.scrollY;
+    const scroll = () => {
+      const y = window.scrollY;
+      if (y - last > 8) setChrome(false);
+      last = y;
+    };
+    window.addEventListener("scroll", scroll, { passive: true });
+    return () => window.removeEventListener("scroll", scroll);
+  }, [strip]);
+
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    if (!strip || sheet) document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [strip, sheet]);
+
   const prefetched = useRef<string | null>(null);
   useEffect(() => {
     if (progressStarted.current)
@@ -190,382 +231,347 @@ export function Reader({
       router.prefetch(href(nextId));
     }
   }, [current, total, series.id, chapter.id, nextId, router, href]);
-  useEffect(() => {
-    if (mode === "scroll") return;
-    const images = pages
-      .slice(
-        (visiblePages.at(-1) ?? current) + 1,
-        (visiblePages.at(-1) ?? current) + 1 + settings.preload,
-      )
-      .map((page) => {
-        const image = new Image();
-        image.decoding = "async";
-        image.src = page.src;
-        return image;
-      });
-    return () => {
-      images.forEach((image) => {
-        image.src = "";
-      });
-    };
-  }, [mode, current, pages, visiblePages, settings.preload]);
 
-  // Keyboard
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
+    if (!settings.keepAwake || !("wakeLock" in navigator)) return;
+    let lock: WakeLockSentinel | undefined;
+    let disposed = false;
+    const acquire = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const result = await navigator.wakeLock.request("screen");
+        if (disposed) await result.release();
+        else lock = result;
+      } catch {
+        /* Unsupported devices and low battery can deny the request. */
+      }
+    };
+    void acquire();
+    document.addEventListener("visibilitychange", acquire);
+    return () => {
+      disposed = true;
+      void lock?.release();
+      document.removeEventListener("visibilitychange", acquire);
+    };
+  }, [settings.keepAwake]);
+
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setSheet(null);
+        setShowZones(false);
+        setChrome(true);
         return;
       }
       if (
-        e.target instanceof HTMLElement &&
-        e.target.closest("input,select,textarea,button,[contenteditable=true]")
+        sheet ||
+        (e.target instanceof HTMLElement &&
+          e.target.closest("input,select,textarea,[contenteditable=true]"))
       )
         return;
-      if (sheet) return;
-      if (mode !== "scroll" && !e.shiftKey) {
-        if (
-          [
-            "ArrowLeft",
-            "ArrowRight",
-            "PageDown",
-            "PageUp",
-            " ",
-            "Home",
-            "End",
-          ].includes(e.key)
-        )
-          e.preventDefault();
-        if (e.key === "ArrowLeft") turn(direction === "rtl" ? 1 : -1);
-        if (e.key === "ArrowRight") turn(direction === "rtl" ? -1 : 1);
-        if (e.key === "PageDown" || e.key === " ") turn(1);
-        if (e.key === "PageUp") turn(-1);
-        if (e.key === "Home") goTo(0);
-        if (e.key === "End") goTo(total - 1);
+      if (
+        e.key === " " &&
+        e.target instanceof HTMLElement &&
+        e.target.closest("button,a")
+      )
         return;
+      let delta = 0;
+      if (e.key === "ArrowRight") delta = rtl ? -1 : 1;
+      if (e.key === "ArrowLeft") delta = rtl ? 1 : -1;
+      if (["PageDown", " ", "ArrowDown"].includes(e.key)) delta = 1;
+      if (["PageUp", "ArrowUp"].includes(e.key)) delta = -1;
+      if (delta) {
+        e.preventDefault();
+        if (e.shiftKey) {
+          const id = delta > 0 ? nextId : prevId;
+          if (id) router.push(href(id));
+        } else turn(delta);
       }
-      if (e.key === "ArrowLeft" && prevId) router.push(href(prevId));
-      if (e.key === "ArrowRight" && nextId) router.push(href(nextId));
+      if (e.key === "Home" || e.key === "End") {
+        e.preventDefault();
+        goTo(e.key === "Home" ? 0 : total - 1);
+      }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [prevId, nextId, router, href, sheet, mode, direction, turn, goTo, total]);
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [sheet, rtl, turn, goTo, total, nextId, prevId, router, href]);
 
-  const resume = () => {
-    if (resumeTo == null) return;
-    goTo(resumeTo);
-    setResumeTo(null);
+  const renderTransition = (kind: "prev" | "next") => {
+    const id = kind === "next" ? nextId : prevId;
+    const target = chapters.find((c) => c.id === id);
+    return (
+      <div
+        className="mx-auto max-w-sm px-8 py-24 text-center text-white"
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <p className="text-xs font-medium uppercase tracking-widest text-white/50">
+          {kind === "next" ? `End of ${label(chapter)}` : "Previous chapter"}
+        </p>
+        <h2 className="mt-3 text-2xl font-semibold">
+          {target
+            ? label(target)
+            : kind === "next"
+              ? "You're all caught up"
+              : "Start of this series"}
+        </h2>
+        {id && (
+          <Link
+            href={href(id)}
+            className="mt-6 inline-block rounded-full bg-white px-6 py-3 text-sm font-semibold text-black"
+          >
+            {kind === "next" ? "Next chapter" : "Previous chapter"}
+          </Link>
+        )}
+        <button
+          className="mt-4 block w-full py-3 text-sm text-white/60"
+          onClick={() => goTo(kind === "next" ? total - 1 : 0)}
+        >
+          Return to chapter
+        </button>
+      </div>
+    );
   };
-
-  const progress = total ? (current + 1) / total : 0;
+  const touch = useRef({ x: 0, y: 0 });
+  const background = {
+    black: "#000",
+    gray: "#181818",
+    white: "#fff",
+    sepia: "#dbc7a4",
+  }[settings.background];
+  const bar =
+    "glass-bar fixed inset-x-0 z-50 transition-transform duration-300";
+  const button =
+    "grid size-11 shrink-0 place-items-center rounded-full hover:bg-white/10 disabled:opacity-25";
 
   return (
     <div
       data-reader
-      data-reader-theme={settings.theme}
       data-reading-mode={mode}
-      data-reading-direction={direction}
-      className="min-h-screen"
-      style={{
-        background: {
-          black: "#000",
-          dim: "#181818",
-          paper: "#f4f1e8",
-          sepia: "#dbc7a4",
-        }[settings.theme],
-      }}
+      className="min-h-dvh"
+      style={{ background }}
     >
-      {/* Top bar */}
-      <header
-        className={`glass-bar fixed inset-x-0 top-0 z-50 pt-[var(--safe-top)] shadow-[inset_0_-0.5px_0_var(--color-hairline)] transition-transform duration-500 ease-[var(--ease-apple)] ${
-          chrome ? "translate-y-0" : "-translate-y-full"
-        }`}
-      >
-        <div className="mx-auto flex h-14 max-w-[1400px] items-center gap-3 px-3 sm:px-5">
-          <Link
-            href={`/series/${series.id}`}
-            aria-label="Back to series"
-            className="grid size-9 shrink-0 place-items-center rounded-full text-label transition hover:bg-fill"
-          >
-            <ChevronLeft className="size-5" />
-          </Link>
-          <div className="min-w-0 flex-1 text-center">
-            <p className="truncate text-[13px] font-semibold">{series.title}</p>
-            <p className="truncate text-[11px] text-secondary">
-              {label(chapter)}
-              {chapter.number && chapter.title ? ` · ${chapter.title}` : ""}
-            </p>
-          </div>
-          <button
-            aria-label="Reading settings"
-            onClick={() => setSheet(sheet === "settings" ? null : "settings")}
-            className="grid size-9 shrink-0 place-items-center rounded-full text-[15px] font-semibold text-label transition hover:bg-fill"
-          >
-            Aa
-          </button>
-        </div>
-        <div className="h-[2px] bg-white/5">
-          <div
-            className="h-full bg-white/80 transition-[width] duration-300"
-            style={{ width: `${progress * 100}%` }}
-          />
-        </div>
-      </header>
-
-      {/* Pages */}
-      {mode === "scroll" ? (
+      <h1 className="sr-only">
+        {series.title}, {label(chapter)}
+      </h1>
+      {strip ? (
         <div
-          onClick={() => {
-            if (sheet) setSheet(null);
-            else setChrome((c) => !c);
+          onPointerDown={(e) => {
+            touch.current = { x: e.clientX, y: e.clientY };
           }}
-          className="mx-auto pt-14"
-          style={{ maxWidth: settings.width ? `${settings.width}px` : "100%" }}
-        >
-          <div className="reader-copy px-5 pt-10 pb-8 text-center">
-            <p className="text-[12px] font-semibold tracking-[0.12em] text-tertiary uppercase">
-              {series.title}
-            </p>
-            <h1 className="display mt-2 text-[28px] font-bold">
-              {label(chapter)}
-            </h1>
-            {chapter.number && chapter.title && (
-              <p className="mt-1 text-[15px] text-secondary">{chapter.title}</p>
-            )}
-            <p className="mt-3 text-[12px] text-tertiary">
-              {total} pages{chapter.group ? ` · ${chapter.group}` : ""}
-            </p>
-          </div>
-          <div className={`flex flex-col ${settings.gap ? "gap-3" : ""}`}>
-            {pages.map((p, i) => (
-              <Page
-                key={p.src}
-                page={p}
-                index={i}
-                settings={settings}
-                ref={(el) => {
-                  pageRefs.current[i] = el;
-                }}
-              />
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div
-          className="mx-auto px-3 pt-20"
-          style={{
-            maxWidth: settings.width
-              ? `${mode === "spread" ? Math.max(1040, settings.width) : settings.width}px`
-              : "100%",
+          onClick={(e) => {
+            if (
+              (e.target as HTMLElement).closest("button,a") ||
+              Math.hypot(
+                e.clientX - touch.current.x,
+                e.clientY - touch.current.y,
+              ) > 12
+            )
+              return;
+            onTap(
+              tapAction(
+                settings,
+                e.clientX / window.innerWidth,
+                e.clientY / window.innerHeight,
+                false,
+              ),
+            );
           }}
         >
-          <h1 className="sr-only">{label(chapter)}</h1>
-          <div className="reader-copy mb-3 flex items-center gap-3 text-xs">
-            <span className="shrink-0">
-              Page {visiblePages.map((i) => i + 1).join("–")} / {total}
-            </span>
-            <input
-              type="range"
-              min={1}
-              max={Math.max(1, total)}
-              value={current + 1}
-              aria-label="Page position"
-              onChange={(e) => goTo(Number(e.target.value) - 1)}
-              className="w-full accent-[#a78bfa]"
-            />
-            <span className="shrink-0">{direction.toUpperCase()}</span>
-          </div>
           <div
-            className="flex min-h-[50svh] items-start justify-center"
-            style={{ direction, touchAction: "pan-y pinch-zoom" }}
-            onPointerDown={(e) => {
-              swipe.current = { x: e.clientX, y: e.clientY, skipClick: false };
-            }}
-            onPointerUp={(e) => {
-              const dx = e.clientX - swipe.current.x,
-                dy = e.clientY - swipe.current.y;
-              if (Math.abs(dx) > 50 && Math.abs(dy) < 60) {
-                swipe.current.skipClick = true;
-                turn((dx < 0 ? 1 : -1) * (direction === "rtl" ? -1 : 1));
-              }
-            }}
-            onClick={(e) => {
-              if (swipe.current.skipClick) {
-                swipe.current.skipClick = false;
-                return;
-              }
-              if (sheet) {
-                setSheet(null);
-                return;
-              }
-              const box = e.currentTarget.getBoundingClientRect();
-              const x = (e.clientX - box.left) / box.width;
-              if (settings.tapZones && (x < 0.28 || x > 0.72))
-                turn((x > 0.72 ? 1 : -1) * (direction === "rtl" ? -1 : 1));
-              else setChrome((c) => !c);
+            className="mx-auto"
+            style={{
+              maxWidth: settings.width || undefined,
+              paddingInline: `${settings.padding}%`,
             }}
           >
-            {visiblePages.map((i) => (
-              <div key={pages[i].src} className="min-w-0 flex-1">
-                <Page
-                  page={pages[i]}
+            <div
+              className="flex flex-col"
+              style={{ gap: mode === "webtoon-gaps" ? 16 : 0 }}
+            >
+              {pages.map((page, i) => (
+                <StripPage
+                  key={page.src}
+                  page={page}
                   index={i}
                   settings={settings}
-                  paged
                   ref={(el) => {
                     pageRefs.current[i] = el;
                   }}
                 />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* End of chapter */}
-      {(mode === "scroll" || groupIndex === groups.length - 1) && (
-        <div className="reader-copy mx-auto max-w-[720px] px-5 pt-16 pb-40">
-          <p className="text-center text-[12px] font-semibold tracking-[0.12em] text-tertiary uppercase">
-            End of {label(chapter)}
-          </p>
-          {nextChapter ? (
-            <Link
-              href={href(nextChapter.id)}
-              className="group relative mt-6 block overflow-hidden rounded-[22px] ring-1 ring-white/10"
-            >
-              {series.cover && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={coverSrc(series.cover, 640)}
-                  alt=""
-                  aria-hidden
-                  className="absolute inset-0 size-full scale-125 object-cover opacity-50 blur-3xl"
-                />
-              )}
-              <div className="relative flex items-center gap-5 bg-black/30 p-5 sm:p-6">
-                {series.cover && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={coverSrc(series.cover, 320)}
-                    alt=""
-                    className="aspect-[2/3] w-[72px] rounded-[10px] object-cover shadow-xl ring-1 ring-white/10"
-                  />
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="text-[12px] font-medium text-secondary">
-                    Up Next
-                  </p>
-                  <p className="display mt-0.5 text-[22px] font-bold">
-                    {label(nextChapter)}
-                  </p>
-                  {nextChapter.number && nextChapter.title && (
-                    <p className="truncate text-[13px] text-secondary">
-                      {nextChapter.title}
-                    </p>
-                  )}
-                </div>
-                <span className="shrink-0 rounded-full bg-white px-5 py-2.5 text-[14px] font-semibold text-black transition group-hover:bg-white/85">
-                  Read
-                </span>
-              </div>
-            </Link>
-          ) : (
-            <div className="mt-6 rounded-[22px] bg-card p-8 text-center ring-1 ring-white/[0.06]">
-              <p className="display text-[20px] font-semibold">
-                You&apos;re all caught up
-              </p>
-              <p className="mt-1 text-[14px] text-secondary">
-                New chapters will appear here as soon as they&apos;re released.
-              </p>
-              <Link
-                href={`/series/${series.id}`}
-                className="mt-5 inline-block rounded-full bg-fill px-5 py-2.5 text-[14px] font-semibold transition hover:bg-fill-2"
-              >
-                Back to Series
-              </Link>
+              ))}
             </div>
-          )}
+          </div>
+          <div className="bg-[#111] pb-20">{renderTransition("next")}</div>
         </div>
+      ) : (
+        <PagedViewer
+          key={`${chapter.id}:${mode}`}
+          pages={pages}
+          items={items}
+          index={itemIndex}
+          axis={mode === "vertical" ? "y" : "x"}
+          rtl={rtl}
+          settings={settings}
+          onTurn={turn}
+          onTap={onTap}
+          renderTransition={renderTransition}
+        />
       )}
-
-      {/* Bottom control pill */}
-      <div
-        className={`fixed inset-x-0 bottom-0 z-50 flex flex-col items-center gap-2 justify-center px-4 pb-[max(env(safe-area-inset-bottom),20px)] transition-all duration-500 ease-[var(--ease-apple)] ${
-          chrome
-            ? "translate-y-0 opacity-100"
-            : "pointer-events-none translate-y-24 opacity-0"
-        }`}
+      {settings.brightness < 100 && (
+        <div
+          className="pointer-events-none fixed inset-0 z-20 bg-black"
+          style={{ opacity: 1 - settings.brightness / 100 }}
+        />
+      )}
+      {settings.tint !== "none" && (
+        <div
+          className="pointer-events-none fixed inset-0 z-20"
+          style={{
+            background: { warm: "#ffb450", amber: "#ff7800", night: "#9b2525" }[
+              settings.tint
+            ],
+            opacity: settings.tint === "night" ? 0.3 : 0.15,
+            mixBlendMode: "multiply",
+          }}
+        />
+      )}
+      <header
+        inert={!chrome || !!sheet}
+        className={`${bar} top-0 pt-[var(--safe-top)] ${chrome ? "translate-y-0" : "-translate-y-full"}`}
       >
-        {mode !== "scroll" && (
-          <nav
-            aria-label="Page navigation"
-            className="glass flex items-center gap-3 rounded-full px-2 py-1 ring-1 ring-white/10"
-          >
-            <button
-              aria-label="Previous page"
-              onClick={() => turn(-1)}
-              disabled={groupIndex === 0 && !prevId}
-              className="rounded-full px-3 py-2 text-xs disabled:opacity-30"
-            >
-              Previous page
-            </button>
-            <span className="text-xs tabular-nums">
-              {current + 1}/{total}
-            </span>
-            <button
-              aria-label="Next page"
-              onClick={() => turn(1)}
-              disabled={groupIndex === groups.length - 1 && !nextId}
-              className="rounded-full px-3 py-2 text-xs disabled:opacity-30"
-            >
-              Next page
-            </button>
-          </nav>
-        )}
-        <div className="glass flex items-center gap-1 rounded-full p-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.6)] ring-1 ring-white/10">
-          <PillLink
-            href={prevId ? href(prevId) : null}
-            label="Previous chapter"
+        <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-3">
+          <Link
+            href={`/series/${series.id}`}
+            aria-label="Back to series"
+            className={button}
           >
             <ChevronLeft className="size-5" />
-          </PillLink>
-          <button
-            onClick={() => setSheet(sheet === "chapters" ? null : "chapters")}
-            className="flex h-10 items-center gap-2 rounded-full px-4 text-[14px] font-semibold transition hover:bg-fill"
-          >
-            <ListIcon className="size-4 text-secondary" />
-            {label(chapter)}
-            <span className="font-normal text-secondary tabular-nums">
-              {current + 1}/{total}
-            </span>
-          </button>
-          <PillLink href={nextId ? href(nextId) : null} label="Next chapter">
-            <ChevronRight className="size-5" />
-          </PillLink>
-        </div>
-      </div>
-
-      {/* Resume toast */}
-      {resumeTo != null && (
-        <div className="sheet-in fixed inset-x-0 top-20 z-50 flex justify-center px-4">
-          <div className="glass flex items-center gap-3 rounded-full py-1.5 pr-1.5 pl-5 text-[14px] shadow-2xl ring-1 ring-white/10">
-            <span>Continue from page {resumeTo + 1}?</span>
-            <button
-              onClick={resume}
-              className="rounded-full bg-white px-4 py-1.5 font-semibold text-black"
-            >
-              Resume
-            </button>
-            <button
-              onClick={() => setResumeTo(null)}
-              className="rounded-full px-3 py-1.5 text-secondary hover:text-label"
-            >
-              ✕
-            </button>
+          </Link>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold">{series.title}</p>
+            <p className="truncate text-xs text-secondary">
+              {label(chapter)}
+              {chapter.title && chapter.number ? ` · ${chapter.title}` : ""}
+            </p>
           </div>
+          <button
+            aria-label="Reading settings"
+            className={button}
+            onClick={() => setSheet("settings")}
+          >
+            <SlidersIcon className="size-5" />
+          </button>
+        </div>
+      </header>
+      {!chrome && settings.pageNumber && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 pb-[max(var(--safe-bottom),12px)] text-center">
+          <span className="rounded-full bg-black/60 px-3 py-1 text-xs tabular-nums text-white">
+            {current + 1} / {total}
+          </span>
         </div>
       )}
-
+      <div
+        inert={!chrome || !!sheet}
+        className={`${bar} bottom-0 px-4 pb-[max(var(--safe-bottom),12px)] ${chrome ? "translate-y-0" : "translate-y-full"}`}
+      >
+        <div className="mx-auto max-w-xl pt-4">
+          <div className="flex items-center gap-4 text-xs tabular-nums">
+            <span>{current + 1}</span>
+            <input
+              aria-label="Page position"
+              type="range"
+              min={1}
+              max={Math.max(1, total)}
+              value={current + 1}
+              dir={rtl ? "rtl" : "ltr"}
+              onChange={(e) => goTo(Number(e.target.value) - 1)}
+              className="h-7 w-full accent-white"
+            />
+            <span>{total}</span>
+          </div>
+          <nav
+            aria-label="Reader controls"
+            className="flex items-center justify-between"
+          >
+            <button
+              aria-label="Previous chapter"
+              disabled={!prevId}
+              onClick={() => prevId && router.push(href(prevId))}
+              className={button}
+            >
+              <ChevronLeft />
+            </button>
+            <button
+              aria-label="Previous page"
+              disabled={!current && !transition}
+              onClick={() => (strip ? goTo(current - 1) : turn(-1))}
+              className={button}
+            >
+              <ChevronLeft />
+            </button>
+            <button
+              onClick={() => setSheet("chapters")}
+              className="flex h-11 items-center gap-2 rounded-full px-3 text-xs font-medium"
+            >
+              <ListIcon />
+              Chapters
+            </button>
+            <button
+              aria-label="Next page"
+              onClick={() => (strip ? goTo(current + 1) : turn(1))}
+              className={button}
+            >
+              <ChevronRight />
+            </button>
+            <button
+              aria-label="Next chapter"
+              disabled={!nextId}
+              onClick={() => nextId && router.push(href(nextId))}
+              className={button}
+            >
+              <ChevronRight />
+            </button>
+          </nav>
+        </div>
+      </div>
+      {resumeTo !== null && (
+        <div className="fixed inset-x-4 top-[calc(var(--safe-top)+72px)] z-50 mx-auto flex max-w-sm items-center justify-between rounded-2xl bg-[#29292e] p-4 text-sm text-white shadow-xl">
+          <button
+            onClick={() => {
+              goTo(resumeTo);
+              setResumeTo(null);
+            }}
+          >
+            Resume at page {resumeTo + 1}
+          </button>
+          <button
+            aria-label="Dismiss resume"
+            onClick={() => setResumeTo(null)}
+            className="px-3 py-2"
+          >
+            <span aria-hidden>×</span>
+          </button>
+        </div>
+      )}
+      {showZones && (
+        <div
+          className="fixed inset-0 z-[55] grid grid-cols-3 grid-rows-3"
+          onClick={() => setShowZones(false)}
+        >
+          {tapOverlay(settings, rtl).map((action, i) => (
+            <div
+              key={i}
+              className={`grid place-items-center border border-white/20 text-sm font-semibold text-white ${action === "menu" ? "bg-black/70" : action === "next" ? "bg-blue-900/70" : "bg-purple-900/70"}`}
+            >
+              {action === "menu"
+                ? "Controls"
+                : action === "next"
+                  ? "Next"
+                  : "Previous"}
+            </div>
+          ))}
+        </div>
+      )}
       {sheet === "chapters" && (
         <ChapterSheet
           chapters={chapters}
@@ -582,239 +588,56 @@ export function Reader({
           settings={settings}
           onChange={changeSettings}
           onSaveSeries={() => saveSeriesReaderSettings(series.id, settings)}
-          onClearSeries={() => clearSeriesReaderSettings(series.id)}
-          seriesPreset={seriesPreset}
+          onClearSeries={() => {
+            clearSeriesReaderSettings(series.id);
+            setSeriesMode(series.id, null);
+          }}
+          seriesPreset={seriesPreset || seriesMode !== null}
           versions={versions}
           currentId={chapter.id}
           onPickVersion={(id) => router.push(href(id))}
           onClose={() => setSheet(null)}
+          onShowZones={() => {
+            setSheet(null);
+            setShowZones(true);
+          }}
         />
       )}
     </div>
   );
 }
 
-function PillLink({
-  href,
-  label,
-  children,
-}: {
-  href: string | null;
-  label: string;
-  children: React.ReactNode;
-}) {
-  const cls = "grid size-10 place-items-center rounded-full transition";
-  if (!href)
-    return (
-      <span aria-label={label} className={`${cls} text-white/20`}>
-        {children}
-      </span>
-    );
-  return (
-    <Link
-      href={href}
-      aria-label={label}
-      className={`${cls} text-label hover:bg-fill`}
-    >
-      {children}
-    </Link>
-  );
-}
-
-// ---------- Page ----------
-
-function Page({
+function StripPage({
   page,
   index,
   settings,
-  paged = false,
   ref,
 }: {
-  page: PageImage;
+  page: Page;
   index: number;
   settings: ReaderSettings;
-  paged?: boolean;
   ref: (el: HTMLDivElement | null) => void;
 }) {
-  const box = useRef<HTMLDivElement | null>(null);
-  const [visible, setVisible] = useState(paged || index < settings.preload);
-  const [loaded, setLoaded] = useState(false);
-  const [natural, setNatural] = useState(0);
-  const [naturalHeight, setNaturalHeight] = useState(0);
-  const [hdFailed, setHdFailed] = useState(false);
-  const [hdReady, setHdReady] = useState(false);
-  const [attempt, setAttempt] = useState(0);
-  const [failed, setFailed] = useState(false);
-
-  // Start loading well before the page scrolls into view
-  useEffect(() => {
-    if (visible || !box.current) return;
-    const io = new IntersectionObserver(
-      ([e]) => {
-        if (e.isIntersecting) {
-          setVisible(true);
-          io.disconnect();
-        }
-      },
-      { rootMargin: `${settings.preload * 1200}px 0px` },
-    );
-    io.observe(box.current);
-    return () => io.disconnect();
-  }, [visible, settings.preload]);
-
-  // Upgrade to the sharpened HD render only when the original is smaller than the device pixels we're drawing
-  const wantsHd = useMemo(() => {
-    if (
-      !settings.hd ||
-      hdFailed ||
-      !loaded ||
-      !natural ||
-      typeof window === "undefined"
-    )
-      return false;
-    const cssWidth = Math.min(
-      settings.width || window.innerWidth,
-      window.innerWidth,
-    );
-    return natural < cssWidth * window.devicePixelRatio * 0.9;
-  }, [settings.hd, settings.width, loaded, natural, hdFailed]);
-
-  useEffect(() => {
-    if (!wantsHd || hdReady) return;
-    const im = new Image();
-    im.decoding = "async";
-    im.src = page.hd;
-    let cancelled = false;
-    im.decode().then(
-      () => !cancelled && setHdReady(true),
-      () => !cancelled && setHdFailed(true),
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [wantsHd, hdReady, page.hd]);
-
-  const src =
-    wantsHd && hdReady
-      ? page.hd
-      : attempt
-        ? retryUrl(page.src, attempt)
-        : page.src;
-
+  const [ratio, setRatio] = useState<number | null>(null);
   return (
     <div
-      ref={(el) => {
-        box.current = el;
-        ref(el);
-      }}
-      className={`relative w-full ${loaded ? "" : "aspect-[2/3] bg-[#0b0b0c]"}`}
-      style={
-        paged
-          ? undefined
-          : {
-              contentVisibility: "auto",
-              aspectRatio:
-                natural && naturalHeight
-                  ? `${natural} / ${naturalHeight}`
-                  : undefined,
-            }
-      }
+      ref={ref}
+      data-page-index={index}
+      className="relative w-full"
+      style={{ aspectRatio: ratio ?? 2 / 3 }}
     >
-      {failed ? (
-        <div className="absolute inset-0 grid place-items-center">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setFailed(false);
-              setAttempt((a) => a + 1);
-            }}
-            className="rounded-full bg-fill px-5 py-2.5 text-[14px] font-medium transition hover:bg-fill-2"
-          >
-            Couldn&apos;t load page {index + 1}. Tap to retry
-          </button>
-        </div>
-      ) : (
-        visible && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={src}
-            alt={`Page ${index + 1}`}
-            decoding="async"
-            fetchPriority={index < 2 ? "high" : "auto"}
-            draggable={false}
-            ref={(el) => {
-              // Pages rendered on the server may finish loading before hydration attaches onLoad
-              if (el?.complete && el.naturalWidth) {
-                const w = el.naturalWidth;
-                setLoaded(true);
-                setNatural((n) => n || w);
-                setNaturalHeight((h) => h || el.naturalHeight);
-              }
-            }}
-            onLoad={(e) => {
-              const w = e.currentTarget.naturalWidth;
-              setLoaded(true);
-              setNatural((n) => n || w);
-              const imageHeight = e.currentTarget.naturalHeight;
-              setNaturalHeight((h) => h || imageHeight);
-            }}
-            onError={() => {
-              if (hdReady) {
-                setHdFailed(true);
-                setHdReady(false);
-              } else if (attempt < 2) setAttempt((a) => a + 1);
-              else setFailed(true);
-            }}
-            style={{
-              filter: `brightness(${settings.brightness}%) contrast(${settings.contrast}%)`,
-              ...(paged && settings.fit === "height"
-                ? {
-                    maxHeight: "calc(100svh - 190px)",
-                    width: "auto",
-                    maxWidth: "100%",
-                    marginInline: "auto",
-                    objectFit: "contain" as const,
-                  }
-                : {}),
-            }}
-            className={`page-img block w-full transition-opacity duration-500 ${loaded ? "opacity-100" : "opacity-0"}`}
-          />
-        )
-      )}
-      {!loaded && !failed && (
-        <div className="absolute inset-0 grid place-items-center">
-          <Spinner />
-        </div>
-      )}
+      <PageImage
+        page={page}
+        index={index}
+        settings={settings}
+        load={index < settings.preload}
+        lazyMargin={settings.preload * 1200}
+        onSize={(_, w, h) => setRatio(w / h)}
+        className="block w-full"
+      />
     </div>
   );
 }
-
-function Spinner() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="size-6 animate-spin text-white/40"
-      aria-label="Loading"
-    >
-      {Array.from({ length: 8 }, (_, i) => (
-        <rect
-          key={i}
-          x="11"
-          y="2"
-          width="2"
-          height="6"
-          rx="1"
-          fill="currentColor"
-          opacity={(i + 1) / 8}
-          transform={`rotate(${i * 45} 12 12)`}
-        />
-      ))}
-    </svg>
-  );
-}
-
-// ---------- Sheets ----------
 
 function Sheet({
   title,
@@ -825,6 +648,36 @@ function Sheet({
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  const dialog = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    const el = dialog.current;
+    const controls = () =>
+      Array.from(
+        el?.querySelectorAll<HTMLElement>(
+          'button,input,select,a[href],[tabindex="0"]',
+        ) ?? [],
+      ).filter((node) => !node.hasAttribute("disabled"));
+    controls()[0]?.focus();
+    const trap = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      const nodes = controls();
+      const first = nodes[0],
+        last = nodes.at(-1);
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last?.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first?.focus();
+      }
+    };
+    el?.addEventListener("keydown", trap);
+    return () => {
+      el?.removeEventListener("keydown", trap);
+      previous?.focus();
+    };
+  }, []);
   return (
     <div
       className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center"
@@ -832,11 +685,12 @@ function Sheet({
     >
       <div className="absolute inset-0 bg-black/60" />
       <div
+        ref={dialog}
         role="dialog"
         aria-modal="true"
         aria-label={title}
         onClick={(e) => e.stopPropagation()}
-        className="sheet-in glass relative flex max-h-[80vh] w-full flex-col overflow-hidden rounded-t-[24px] shadow-2xl ring-1 ring-white/10 sm:max-w-[440px] sm:rounded-[24px]"
+        className="sheet-in glass relative flex max-h-[85dvh] w-full flex-col overflow-hidden rounded-t-[24px] pb-[var(--safe-bottom)] shadow-2xl ring-1 ring-white/10 sm:max-w-[480px] sm:rounded-[24px]"
       >
         <div className="flex items-center justify-between px-5 pt-4 pb-2">
           <h2 className="display text-[17px] font-semibold">{title}</h2>
@@ -873,7 +727,9 @@ function ChapterSheet({
       )
     : chapters;
   const currentRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => currentRef.current?.scrollIntoView({ block: "center" }), []);
+  useEffect(() => {
+    currentRef.current?.scrollIntoView({ block: "center" });
+  }, []);
 
   return (
     <Sheet title="Chapters" onClose={onClose}>
@@ -881,6 +737,7 @@ function ChapterSheet({
         <label className="flex h-9 items-center gap-2 rounded-[10px] bg-fill px-3">
           <SearchIcon className="size-4 text-secondary" />
           <input
+            aria-label="Find chapter"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Chapter number or title"
@@ -889,6 +746,9 @@ function ChapterSheet({
         </label>
       </div>
       <div className="overflow-y-auto px-3 pb-4">
+        {!list.length && (
+          <p className="p-4 text-sm text-secondary">No chapters found.</p>
+        )}
         {list.map((c) => {
           const active = c.id === currentId;
           return (
@@ -933,6 +793,7 @@ function SettingsSheet({
   onSaveSeries,
   onClearSeries,
   seriesPreset,
+  onShowZones,
 }: {
   settings: ReaderSettings;
   versions: Version[];
@@ -943,11 +804,18 @@ function SettingsSheet({
   onSaveSeries: () => void;
   onClearSeries: () => void;
   seriesPreset: boolean;
+  onShowZones: () => void;
 }) {
   return (
     <Sheet title="Reading settings" onClose={onClose}>
       <div className="space-y-6 overflow-y-auto px-5 pt-2 pb-6">
         <ReaderOptions settings={settings} onChange={onChange} />
+        <button
+          onClick={onShowZones}
+          className="w-full rounded-xl bg-fill px-4 py-3 text-sm"
+        >
+          Show tap zones
+        </button>
         <div className="flex flex-wrap gap-2">
           <button
             onClick={onSaveSeries}
