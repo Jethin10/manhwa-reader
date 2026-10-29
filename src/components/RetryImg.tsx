@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { retryUrl } from "@/lib/images";
 
 /** <img> that quietly retries a couple of times (the image proxy can hit transient upstream drops) and fades in. */
 export function RetryImg({
@@ -16,7 +17,7 @@ export function RetryImg({
     // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
     <img
       {...rest}
-      src={retrying ? `${src}&r=${attempt}` : src}
+      src={retrying ? retryUrl(src, attempt) : src}
       srcSet={retrying ? undefined : srcSet}
       ref={(el) => {
         // Covers SSR'd images that finished loading before hydration attached onLoad

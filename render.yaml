@@ -13,6 +13,9 @@ services:
         value: "22"
       - key: NEXT_TELEMETRY_DISABLED
         value: "1"
+      # The free plan has a tenth of a CPU: serve images without resizing or upscaling.
+      - key: IMAGE_PROCESSING
+        value: "off"
       # Keeps signed image and stream URLs valid across restarts and deploys.
       - key: IMAGE_SIGNING_KEY
         generateValue: true

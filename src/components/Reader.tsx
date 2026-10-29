@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Chapter, PageImage } from "@/lib/catalog";
-import { coverSrc } from "@/lib/images";
+import { coverSrc, retryUrl } from "@/lib/images";
 import {
   getSavedPage,
   recordRead,
@@ -698,7 +698,7 @@ function Page({
     wantsHd && hdReady
       ? page.hd
       : attempt
-        ? `${page.src}&r=${attempt}`
+        ? retryUrl(page.src, attempt)
         : page.src;
 
   return (

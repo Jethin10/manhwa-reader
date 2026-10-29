@@ -117,7 +117,8 @@ export async function browseSeries(opts: dex.BrowseOptions & { source?: SourceId
     total: good.reduce((n, r) => n + r.total, 0),
     pages: Math.max(1, ...good.map((r) => r.pages)),
     page: opts.page ?? 1,
-    warnings,
+    // With every source mixed together, one missing source isn't worth a banner.
+    warnings: all && series.length ? [] : warnings,
   };
 }
 export const getSeries = (id: string) => of(id).series(id);

@@ -132,11 +132,11 @@ export async function GET(request: Request) {
     return new Response("Host not allowed", { status: 403 });
   }
 
-  const width = Math.min(
-    2000,
-    Math.max(0, parseInt(params.get("w") ?? "") || 0),
-  );
-  const hd = params.get("hd") === "1";
+  // Small hosts (IMAGE_PROCESSING=off) pass originals through: resizing and upscaling with
+  // sharp would queue every page behind a fraction of a CPU.
+  const processing = process.env.IMAGE_PROCESSING !== "off";
+  const width = processing ? Math.min(2000, Math.max(0, parseInt(params.get("w") ?? "") || 0)) : 0;
+  const hd = processing && params.get("hd") === "1";
 
   // At-home hosts rotate, so key page images by their path (hash + filename), not the host.
   const stableKey = target.hostname.endsWith("mangadex.network")
