@@ -50,7 +50,19 @@ If a source fails to load a chapter's pages, the reader moves to the next copy. 
 
 Every source is read over plain HTTP, so no browser is needed on the server. Site challenges or layout changes can interrupt a source. Catalog failures appear beside the results, and the other sources stay usable.
 
-The immersive reader offers continuous scroll, single pages, and double-page spreads; independent RTL/LTR direction; spread offset; width/height fitting; black/dim/paper/sepia surrounds; image brightness/contrast; gaps; configurable preloading; and title-specific presets. Manga defaults to single-page RTL; manhwa defaults to continuous scroll. Keyboard, edge taps, swipes, chapter navigation, translation choices and saved positions are supported. Original-quality pages remain available with optional HD sharpening. Existing MangaDex bookmarks still work.
+The reader follows Mihon (Tachiyomi). Reading modes are left to right, right to left, vertical, long strip, and long strip with gaps. Manga opens right to left and manhwa as a long strip, and a mode picked in the reader sticks to that series. Its settings sheet has the same three tabs as Mihon's:
+
+- **Reading mode:** scale type (fit screen, stretch, fit width, fit height, original size, smart fit), zoom start position, double-page spreads (wide pages stay alone), splitting wide pages, tap to pan through large pages, tap zone layouts and inversion, page animations, double tap to zoom, and strip width and padding.
+- **General:** background color, page number, keep screen on, long tap page actions (save, share, reload), volume keys in the Android app, preloading, and HD sharpening.
+- **Filter:** brightness, contrast, color filters, grayscale and inverted colors.
+
+Chapters are marked read when you reach the end, and the series page shows it the way Mihon does: read chapters dim, the one in progress shows how far you got, and the main button resumes or opens the next unread chapter. Filter the list to unread or downloaded chapters, or long press (or tap Select) to mark several read or unread, mark everything up to a chapter as read, or download or delete them together.
+
+**Updates.** Library › Updates lists new chapters from every series in your library, newest first and grouped by day, with a burst of releases shown as one row. Covers in the Library show how many chapters are unread, the Library tab shows a dot when anything is new, and the library can sort by most unread or recently read. The check runs when the result is over half an hour old, or on demand.
+
+**Downloads.** Any chapter downloads for offline reading: tap the icon beside it, use the download button above the list for the next 5 or 10 unread chapters, all unread, or everything, or tap the icon in the reader's top bar. Library › Downloads shows the queue with progress, storage used, and every saved chapter, which reads with no connection (the service worker serves the pages and the Downloads screen itself). In the Android app, the connect screen offers Open downloads when the server can't be reached.
+
+A chapter reopens where you left it. Halfway through, the next chapter is fetched so it opens instantly, and the end of a chapter shows what comes next and any gap in the numbering. Pinch and double tap zoom, swipes, keyboard (arrows, Shift+arrows for chapters, M for the menu, F for full screen), and full screen are supported. Existing MangaDex bookmarks still work.
 
 ## Install on a phone
 

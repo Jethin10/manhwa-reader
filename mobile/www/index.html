@@ -38,6 +38,7 @@
       }
       button:active { transform: scale(.97); opacity: .85; }
       button:disabled { opacity: .5; }
+      button.secondary { background: #1c1c1e; color: #fff; }
       .hint { font-size: 13px; line-height: 18px; color: rgba(235,235,245,.34); margin-top: 16px; text-align: center; }
       .error { color: #ff453a; min-height: 18px; font-size: 13px; margin-top: 12px; text-align: center; }
       code { color: rgba(235,235,245,.62); }
@@ -60,6 +61,7 @@
           spellcheck="false" placeholder="http://192.168.1.20:3000" required />
         <button id="go" type="submit">Connect</button>
         <div class="error" id="error" role="alert"></div>
+        <button id="offline" type="button" class="secondary" hidden>Open downloads</button>
         <p class="hint">Run <code>npm run start:lan</code> on your computer and enter the address it prints.
           Use the same Wi-Fi network, or a public HTTPS address.</p>
       </form>
@@ -99,11 +101,16 @@
         }
         document.body.classList.remove("busy");
         $("go").disabled = false;
+        // Downloaded chapters still open offline: the app's service worker serves them.
+        $("offline").hidden = !localStorage.getItem(KEY);
         $("error").textContent = auto
           ? "Couldn't reach your server. Check that it's running, then try again."
           : "No Manhwa server answered at that address.";
       }
 
+      $("offline").addEventListener("click", () => {
+        location.replace(clean(localStorage.getItem(KEY)) + "/downloads");
+      });
       const saved = clean(localStorage.getItem(KEY) || window.MANHWA_SERVER);
       $("url").value = saved;
       $("form").addEventListener("submit", (e) => {

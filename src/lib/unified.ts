@@ -61,7 +61,8 @@ export const getMergedChapters = cache(async (id: string) => {
   const mirrors = await findMirrors(id).catch(() => [] as string[]);
   const ids = [id, ...mirrors];
   const lists = await Promise.allSettled(
-    ids.map((x) => withTimeout(getAllUploads(x), 20000, sourceOf(x))),
+    // The series' own source gets longer; a slow mirror only loses its extra chapters.
+    ids.map((x, i) => withTimeout(getAllUploads(x), i === 0 ? 20000 : 9000, sourceOf(x))),
   );
   const uploads: Chapter[] = [];
   const sources: SourceSummary[] = ids.map((x, i) => {

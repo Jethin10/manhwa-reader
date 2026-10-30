@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { useUnreadCounts } from "@/lib/updates";
 import { SearchBox, type SearchSection } from "./SearchBox";
 import {
   BooksIcon,
@@ -146,7 +147,10 @@ export function Chrome({
                     on ? "text-accent" : "text-tertiary active:text-secondary"
                   }`}
                 >
-                  <Icon filled={on} className="size-[25px]" />
+                  <span className="relative">
+                    <Icon filled={on} className="size-[25px]" />
+                    {href === "/bookmarks" && <UnreadDot />}
+                  </span>
                   <span className="text-[10px] leading-none font-medium tracking-[0.01em]">
                     {label}
                   </span>
@@ -157,6 +161,18 @@ export function Chrome({
         </ul>
       </nav>
     </>
+  );
+}
+
+/** New chapters waiting in the library (from the last Updates check). */
+function UnreadDot() {
+  const unread = useUnreadCounts();
+  if (!Object.values(unread).some((n) => n > 0)) return null;
+  return (
+    <span
+      aria-label="New chapters"
+      className="absolute -top-0.5 -right-1 size-2.5 rounded-full bg-[#ff453a] ring-2 ring-black"
+    />
   );
 }
 

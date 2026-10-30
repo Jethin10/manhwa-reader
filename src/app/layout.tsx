@@ -5,6 +5,7 @@ import { Chrome, Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { PreferenceEffects } from "@/components/PreferenceEffects";
 import { AppUpdate } from "@/components/AppUpdate";
+import { Toaster } from "@/components/Toaster";
 import "./globals.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
@@ -40,6 +41,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         </Suspense>
         <main className="app-main flex-1">{children}</main>
         <Footer />
+        <Toaster />
       </body>
     </html>
   );

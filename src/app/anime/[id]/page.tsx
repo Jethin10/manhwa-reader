@@ -1,8 +1,17 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { getAnime, getAnimeFranchise, type FranchiseEntry } from "@/lib/anime";
 import { AnimeFranchise } from "@/components/AnimeFranchise";
 import { AnimePlayer } from "@/components/AnimePlayer";
 import { SourceIssue } from "@/components/SourceIssue";
+export async function generateMetadata({
+  params,
+}: PageProps<"/anime/[id]">): Promise<Metadata> {
+  const { id } = await params;
+  const data = await getAnime(id).catch(() => null);
+  return { title: data ? data.anime.title : "Anime unavailable" };
+}
+
 export default function AnimeWatchPage({
   params,
   searchParams,
@@ -31,8 +40,15 @@ async function Watch({ params, searchParams }: PageProps<"/anime/[id]">) {
         message="This anime could not be loaded. Try another title or return to the catalog."
       />
     );
+  // The player comes first; seasons and movies follow ("Seasons & movies" jumps there).
   return (
     <>
+      <AnimePlayer
+        key={id}
+        {...data}
+        initialEpisode={typeof sp.ep === "string" ? sp.ep : ""}
+        initialAudio={sp.audio === "dub" ? "dub" : sp.audio === "sub" ? "sub" : undefined}
+      />
       <Suspense
         fallback={<AnimeFranchise entries={data.franchise} currentId={id} />}
       >
@@ -42,12 +58,6 @@ async function Watch({ params, searchParams }: PageProps<"/anime/[id]">) {
           currentId={id}
         />
       </Suspense>
-      <AnimePlayer
-        key={id}
-        {...data}
-        initialEpisode={typeof sp.ep === "string" ? sp.ep : ""}
-        initialAudio={sp.audio === "dub" ? "dub" : sp.audio === "sub" ? "sub" : undefined}
-      />
     </>
   );
 }

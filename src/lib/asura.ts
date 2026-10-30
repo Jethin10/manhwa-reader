@@ -44,7 +44,7 @@ function mapSeries(s: RawSeries): Series {
     description: plainText(s.description ?? ""),
     cover: s.cover,
     status: s.status,
-    type: s.type[0].toUpperCase() + s.type.slice(1),
+    type: s.type ? s.type[0].toUpperCase() + s.type.slice(1) : "Manhwa",
     year: s.release_year ?? null,
     tags: (s.genres ?? []).map((g) => ({
       id: g.slug,
@@ -92,9 +92,9 @@ export async function browseAsura(opts: BrowseOptions) {
     meta: { total: number };
   };
   return {
-    series: data.data.map(mapSeries),
-    total: data.meta.total,
-    pages: Math.ceil(data.meta.total / limit),
+    series: (data.data ?? []).map(mapSeries),
+    total: data.meta?.total ?? 0,
+    pages: Math.max(1, Math.ceil((data.meta?.total ?? 0) / limit)),
     page,
   };
 }
@@ -117,7 +117,7 @@ export async function getAsuraChapters(id: string): Promise<Chapter[]> {
   const s = await asuraDetail(id);
   const html = await (await sourceFetch(`${SITE}${s.public_url}`)).text();
   const data = astroProps<{ chapters: RawChapter[] }>(html, "chapters");
-  return data.chapters
+  return (data.chapters ?? [])
     .filter(
       (c) =>
         !c.is_premium &&
@@ -138,20 +138,45 @@ export async function getAsuraChapters(id: string): Promise<Chapter[]> {
 }
 export async function getAsuraChapter(id: string) {
   const mangaId = id.split("~").slice(0, 2).join("~");
-  const chapter = (await getAsuraChapters(mangaId)).find((c) => c.id === id);
-  if (!chapter)
+  const number = id.split("~")[2] ?? "";
+  // The chapter list comes from the series page, which Asura can take seconds to serve.
+  // Give it a moment; past that, open the chapter from its id while the list finishes
+  // loading into the cache for next time.
+  const listed = getAsuraChapters(mangaId).then(
+    (list) => list.find((c) => c.id === id) ?? null,
+    () => undefined,
+  );
+  const chapter = await Promise.race([
+    listed,
+    new Promise<undefined>((r) => setTimeout(r, 1500)),
+  ]);
+  if (chapter === null)
     throw new Error(
       "This chapter is unavailable or requires access on Asura Scans.",
     );
-  return { mangaId, chapter };
+  if (chapter) return { mangaId, chapter };
+  if (!/^\d+(\.\d+)?$/.test(number)) throw new Error("Invalid chapter.");
+  return {
+    mangaId,
+    chapter: {
+      id,
+      number,
+      title: null,
+      volume: null,
+      pages: 0,
+      externalUrl: null,
+      readableAt: "",
+      group: "Asura Scans",
+    } satisfies Chapter,
+  };
 }
 export async function getAsuraPages(id: string) {
   "use cache";
   cacheLife("minutes");
-  await getAsuraChapter(id);
-  const s = await asuraDetail(id);
   const number = id.split("~")[2];
   if (!/^\d+(\.\d+)?$/.test(number)) throw new Error("Invalid chapter.");
+  // Locked (premium, early access) chapters carry no pages, which fails below.
+  const s = await asuraDetail(id);
   const html = await (
     await sourceFetch(`${SITE}${s.public_url}/chapter/${number}`)
   ).text();
@@ -159,7 +184,7 @@ export async function getAsuraPages(id: string) {
     html,
     "pages",
   );
-  if (!data.pages.length)
+  if (!data.pages?.length)
     throw new Error("Asura has no readable pages for this chapter.");
   if (data.pages.some((p) => p.tiles?.length))
     throw new Error(

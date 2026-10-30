@@ -1,0 +1,6 @@
+# Cloudflare Worker that fetches upstream files for the app from Cloudflare's network.
+# Deploy: cd relay && npx wrangler deploy; set the key once with `npx wrangler secret put RELAY_KEY`.
+name = "manhwa-relay"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = true

@@ -3,6 +3,7 @@ import { cacheLife } from "next/cache";
 import { getAnimeServers } from "./anime";
 import { sourceFetch } from "./source-http";
 import { imageSignature, validImageSignature } from "./image-signing";
+import { relayEnabled, relayUrl } from "./relay";
 import type { PlaybackMedia } from "./anime-playback";
 
 const HOSTS = [
@@ -19,15 +20,19 @@ export function allowedStreamUrl(url: URL) {
     HOSTS.some((h) => h.test(url.hostname))
   );
 }
+function resolveStream(raw: string, base: string, edge: string) {
+  const url = new URL(raw, base);
+  if (!allowedStreamUrl(url))
+    throw new Error("This media host is unsupported.");
+  if (edge && url.pathname.startsWith("/s/")) url.host = new URL(edge).host;
+  return url;
+}
 export function streamUrl(
   raw: string,
   base = "https://zokoanime.video",
   edge = "",
 ) {
-  const url = new URL(raw, base);
-  if (!allowedStreamUrl(url))
-    throw new Error("This media host is unsupported.");
-  if (edge && url.pathname.startsWith("/s/")) url.host = new URL(edge).host;
+  const url = resolveStream(raw, base, edge);
   return `/api/anime/stream?u=${encodeURIComponent(url.href)}&edge=${encodeURIComponent(edge)}&sig=${imageSignature(`stream|${url.href}|${edge}`)}`;
 }
 export function verifyStreamUrl(url: URL, signature: string, edge = "") {
@@ -227,7 +232,13 @@ export function rewritePlaylist(text: string, base: string, edge = "") {
     .split(/\r?\n/)
     .map((line) => {
       if (!line.trim()) return line;
-      if (!line.startsWith("#")) return streamUrl(line.trim(), base, edge);
+      if (!line.startsWith("#")) {
+        // Segments are the heavy part: with a relay they stream from Cloudflare, not this server.
+        const url = resolveStream(line.trim(), base, edge);
+        if (relayEnabled() && !url.pathname.endsWith(".m3u8"))
+          return relayUrl(url.href, { referer: "https://zokoanime.video/" });
+        return streamUrl(line.trim(), base, edge);
+      }
       return line.replace(
         /URI="([^"]+)"/g,
         (_, uri: string) => `URI="${streamUrl(uri, base, edge)}"`,

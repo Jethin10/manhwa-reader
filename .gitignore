@@ -41,3 +41,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Worker secrets for wrangler dev
+relay/.dev.vars
+relay/.wrangler/

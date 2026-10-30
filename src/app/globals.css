@@ -357,3 +357,17 @@ body:has([data-reader]) .app-main {
 [data-reader-theme="paper"] .reader-copy .text-secondary, [data-reader-theme="sepia"] .reader-copy .text-secondary { color: #675847; }
 [data-reader-theme="paper"] .reader-copy .text-tertiary, [data-reader-theme="sepia"] .reader-copy .text-tertiary { color: #776856; }
 html[data-reduce-motion="true"] *, html[data-reduce-motion="true"] *::before, html[data-reduce-motion="true"] *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+
+/* Toasts sit above the tab bar, and at the top while reading (the reader's bar is at the bottom). */
+.toaster {
+  bottom: calc(var(--tabbar-h) + 14px);
+}
+@media (width >= 64rem) {
+  .toaster {
+    bottom: 28px;
+  }
+}
+body:has([data-reader]) .toaster {
+  top: calc(var(--safe-top) + 64px);
+  bottom: auto;
+}
