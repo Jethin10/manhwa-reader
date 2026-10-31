@@ -10,6 +10,7 @@ const eslintConfig = defineConfig([
     ".source-research/**",
     "artifacts/**",
     "android/**",
+    "relay/.wrangler/**",
     // Default ignores of eslint-config-next:
     ".next/**",
     "out/**",

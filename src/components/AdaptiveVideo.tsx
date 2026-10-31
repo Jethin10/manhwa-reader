@@ -3,6 +3,18 @@ import { useEffect, useRef, useState } from "react";
 import { usePreferences } from "@/lib/preferences";
 import type Hls from "hls.js";
 import type { PlaybackMedia, PlaybackMode } from "@/lib/anime-playback";
+import { prefetchingLoader } from "@/lib/hls-prefetch";
+
+// hls.js counts its buffer in seconds of video, so faster playback needs proportionally
+// more of it to cover the same wall-clock time.
+function bufferPlan(buffer: "balanced" | "generous", rate: number) {
+  const seconds = (buffer === "generous" ? 90 : 60) * Math.max(1, rate);
+  return {
+    maxBufferLength: seconds,
+    maxMaxBufferLength: Math.max(120, seconds * 2),
+    maxBufferSize: Math.min(200, seconds * 0.75) * 1024 * 1024,
+  };
+}
 
 export default function AdaptiveVideo({
   media,
@@ -29,11 +41,7 @@ export default function AdaptiveVideo({
     const el = video.current;
     if (el) el.playbackRate = prefs.speed;
     const hls = engine.current;
-    if (hls) {
-      hls.config.maxBufferLength = prefs.buffer === "generous" ? 90 : 60;
-      hls.config.maxBufferSize =
-        (prefs.buffer === "generous" ? 72 : 48) * 1024 * 1024;
-    }
+    if (hls) Object.assign(hls.config, bufferPlan(prefs.buffer, prefs.speed));
   }, [prefs]);
   const [levels, setLevels] = useState<{ height: number; index: number }[]>([]);
   const [quality, setQuality] = useState(-1),
@@ -101,22 +109,24 @@ export default function AdaptiveVideo({
             } else fail();
             return;
           }
+          let instance: Hls | null = null;
           const hls = new Hls({
             enableWorker: true,
-            maxBufferLength:
-              preferences.current.buffer === "generous" ? 90 : 60,
-            maxMaxBufferLength: 120,
-            maxBufferSize:
-              (preferences.current.buffer === "generous" ? 72 : 48) *
-              1024 *
-              1024,
+            ...bufferPlan(preferences.current.buffer, preferences.current.speed),
+            // Fetch upcoming segments in parallel; more of them when playing fast.
+            fLoader: prefetchingLoader(
+              () => instance?.levels ?? [],
+              () => (el.playbackRate > 1.25 ? 4 : 3),
+            ),
             capLevelOnFPSDrop: true,
-            backBufferLength: 20,
+            backBufferLength: 30,
             startLevel: -1,
-            abrEwmaDefaultEstimate: 1500000,
+            // Start high; ABR still steps down if the connection can't keep up.
+            abrEwmaDefaultEstimate: 6_000_000,
             capLevelToPlayerSize: false,
             lowLatencyMode: false,
           });
+          instance = hls;
           engine.current = hls;
           hls.on(Hls.Events.MANIFEST_PARSED, () => {
             const choices = hls.levels.map((l, index) => ({
