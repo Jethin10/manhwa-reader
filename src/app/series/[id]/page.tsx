@@ -13,6 +13,7 @@ import { ChapterList } from "@/components/ChapterList";
 import { ReadButton } from "@/components/ReadButton";
 import { Synopsis } from "@/components/Synopsis";
 import { CheckIcon, SparkleIcon, StarIcon } from "@/components/Icons";
+import type { SavedSeries } from "@/lib/library";
 
 export async function generateMetadata({ params }: PageProps<"/series/[id]">): Promise<Metadata> {
   const { id } = await params;
@@ -137,8 +138,8 @@ async function LoadSeries({ params }: { params: PageProps<"/series/[id]">["param
                 </div>
               )}
             </section>
-            <Suspense fallback={<ChapterList seriesId={id} chapters={primary} pending />}>
-              <MergedChapters id={id} />
+            <Suspense fallback={<ChapterList series={saved} chapters={primary} pending />}>
+              <MergedChapters series={saved} />
             </Suspense>
           </div>
 
@@ -165,8 +166,10 @@ async function LoadSeries({ params }: { params: PageProps<"/series/[id]">["param
 }
 
 function PrimaryRead({ id, chapters }: { id: string; chapters: Chapter[] }) {
-  const first = chapters.filter((c) => !c.externalUrl).at(-1);
-  return first ? <ReadButton seriesId={id} firstId={first.id} firstNumber={first.number} /> : null;
+  const readable = chapters
+    .filter((c) => !c.externalUrl)
+    .map((c) => ({ id: c.id, number: c.number }));
+  return readable.length ? <ReadButton seriesId={id} chapters={readable} /> : null;
 }
 async function MergedRead({ id }: { id: string }) {
   const { chapters } = await getMergedChapters(id).catch(() => ({ chapters: [] as Chapter[] }));
@@ -176,11 +179,11 @@ async function MergedCount({ id }: { id: string }) {
   const { chapters } = await getMergedChapters(id).catch(() => ({ chapters: [] as Chapter[] }));
   return <>{chapters.length || "—"}</>;
 }
-async function MergedChapters({ id }: { id: string }) {
-  const merged = await getMergedChapters(id).catch(() => null);
-  if (!merged) return <ChapterList seriesId={id} chapters={[]} />;
+async function MergedChapters({ series }: { series: SavedSeries }) {
+  const merged = await getMergedChapters(series.id).catch(() => null);
+  if (!merged) return <ChapterList series={series} chapters={[]} />;
   const multi = merged.sources.filter((s) => s.used > 0).length > 1;
-  return <ChapterList seriesId={id} chapters={merged.chapters} showSource={multi} />;
+  return <ChapterList series={series} chapters={merged.chapters} showSource={multi} />;
 }
 
 async function Sources({ id }: { id: string }) {

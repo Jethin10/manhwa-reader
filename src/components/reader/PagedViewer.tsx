@@ -11,18 +11,28 @@ import type { PageImage as Page } from "@/lib/catalog";
 import type { ReaderSettings } from "@/lib/library";
 import { tapAction, type TapAction } from "@/lib/tap-zones";
 import { PageImage, Spinner } from "./PageImage";
+import { pageRatio, pageSize, usePageSizes } from "./page-sizes";
 
 export type PagerItem =
-  { kind: "pages"; pages: number[] } | { kind: "prev" } | { kind: "next" };
+  | {
+      kind: "pages";
+      pages: number[];
+      /** One half of a wide page split in two: 0 is read first. */
+      half?: 0 | 1;
+    }
+  | { kind: "prev" }
+  | { kind: "next" };
 
 type View = { s: number; x: number; y: number };
 const MAX_ZOOM = 4;
 const DOUBLE_TAP_MS = 260;
+const LONG_PRESS_MS = 500;
 
 /**
  * A swipeable pager in the spirit of Mihon's: pages follow the finger and snap, pinch and
- * double-tap zoom, pan around zoomed or oversized pages, and tap zones. Gestures write
- * transforms straight to the DOM so dragging never waits on React.
+ * double-tap zoom, pan around zoomed or oversized pages, tap zones that pan through a page
+ * before turning it, and long press for page actions. Gestures write transforms straight to
+ * the DOM so dragging never waits on React.
  */
 export function PagedViewer({
   pages,
@@ -33,6 +43,7 @@ export function PagedViewer({
   settings,
   onTurn,
   onTap,
+  onLongPress,
   renderTransition,
 }: {
   pages: Page[];
@@ -44,12 +55,14 @@ export function PagedViewer({
   /** Called with +1 / -1 to move in reading order. */
   onTurn: (delta: number) => void;
   onTap: (action: TapAction) => void;
+  /** Long press on a page, with that page's index. */
+  onLongPress?: (page: number) => void;
   renderTransition: (kind: "prev" | "next") => React.ReactNode;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const track = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
-  const [dims, setDims] = useState<Record<number, [number, number]>>({});
+  const sizes = usePageSizes();
   const view = useRef<View>({ s: 1, x: 0, y: 0 });
   const flip = axis === "x" && rtl ? -1 : 1;
 
@@ -63,34 +76,40 @@ export function PagedViewer({
     return () => ro.disconnect();
   }, []);
 
-  const onSize = useCallback((i: number, w: number, h: number) => {
-    setDims((d) => (d[i] ? d : { ...d, [i]: [w, h] }));
-  }, []);
+  const dim = useCallback(
+    (p: number) => pageSize(pages[p]?.src ?? ""),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `sizes` is the store version
+    [pages, sizes],
+  );
+  const ratioOf = useCallback(
+    (p: number) => pageRatio(pages[p]?.src ?? ""),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `sizes` is the store version
+    [pages, sizes],
+  );
 
   // ----- layout -----
   const layout = useCallback(
     (item: PagerItem | undefined) => {
       const { w: vw, h: vh } = size;
       if (!item || item.kind !== "pages") return { cw: vw, ch: vh };
-      const ratio = item.pages.reduce(
-        (a, p) => a + (dims[p] ? dims[p][0] / dims[p][1] : 2 / 3),
-        0,
-      );
-      const scale = item.pages.length > 1 ? "screen" : settings.scale;
+      const halves = item.half === undefined ? 1 : 2;
+      const ratio = item.pages.reduce((a, p) => a + ratioOf(p), 0) / halves;
+      let scale: string = item.pages.length > 1 ? "screen" : settings.scale;
+      // Smart fit: a spread on a portrait screen fills the height and pans; the rest fit.
+      if (scale === "smart") scale = ratio > 1 && vw < vh ? "height" : "screen";
+      if (scale === "stretch") return { cw: vw, ch: vh };
       if (scale === "width") return { cw: vw, ch: vw / ratio };
       if (scale === "height") return { cw: vh * ratio, ch: vh };
-      if (
-        scale === "original" &&
-        item.pages.length === 1 &&
-        dims[item.pages[0]]
-      ) {
-        const [w, h] = dims[item.pages[0]];
-        return { cw: w / devicePixelRatio, ch: h / devicePixelRatio };
-      }
+      const d = item.pages.length === 1 ? dim(item.pages[0]) : undefined;
+      if (scale === "original" && d)
+        return {
+          cw: d[0] / halves / devicePixelRatio,
+          ch: d[1] / devicePixelRatio,
+        };
       const cw = Math.min(vw, vh * ratio);
       return { cw, ch: cw / ratio };
     },
-    [size, dims, settings.scale],
+    [size, ratioOf, dim, settings.scale],
   );
 
   const clamp = useCallback(
@@ -108,10 +127,22 @@ export function PagedViewer({
   const initial = useCallback(
     (item: PagerItem | undefined): View => {
       const { cw, ch } = layout(item);
-      // Oversized pages start where reading starts: top, and the right edge for RTL.
-      return clamp({ s: 1, x: rtl ? size.w - cw : 0, y: 0 }, cw, ch);
+      // Oversized pages start where reading starts: the top, and the right edge for RTL.
+      const start =
+        settings.zoomStart === "auto"
+          ? rtl
+            ? "right"
+            : "left"
+          : settings.zoomStart;
+      const x =
+        start === "right"
+          ? size.w - cw
+          : start === "center"
+            ? (size.w - cw) / 2
+            : 0;
+      return clamp({ s: 1, x, y: 0 }, cw, ch);
     },
-    [layout, clamp, rtl, size.w],
+    [layout, clamp, rtl, size.w, settings.zoomStart],
   );
 
   // ----- DOM writes -----
@@ -139,14 +170,18 @@ export function PagedViewer({
   };
 
   const activeLayout = layout(items[index]);
-  const activePages =
-    items[index]?.kind === "pages"
-      ? items[index].pages.join(",")
-      : items[index]?.kind;
-  // A neighboring preload must not reset the current page's zoom.
+  const active = items[index];
+  const activeKey =
+    active?.kind === "pages"
+      ? `${active.pages.join(",")}:${active.half ?? ""}`
+      : active?.kind;
+  // A neighboring preload must not reset the current page's zoom. The first placement
+  // (opening a chapter, resuming, rotating) jumps; later page turns slide.
+  const placed = useRef(false);
   useLayoutEffect(() => {
     if (!size.w) return;
-    place(0, true);
+    place(0, placed.current);
+    placed.current = true;
     paint(initial(items[index]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -155,9 +190,10 @@ export function PagedViewer({
     size.h,
     activeLayout.cw,
     activeLayout.ch,
-    activePages,
+    activeKey,
     axis,
     rtl,
+    settings.zoomStart,
   ]);
 
   // ----- gestures -----
@@ -173,6 +209,8 @@ export function PagedViewer({
     moved: false,
     lastTap: { t: 0, x: 0, y: 0 },
     tapTimer: 0 as number | ReturnType<typeof setTimeout>,
+    pressTimer: 0 as number | ReturnType<typeof setTimeout>,
+    pressed: false,
     lastWheel: 0,
   });
 
@@ -185,21 +223,56 @@ export function PagedViewer({
 
   const animateView = (to: View) => {
     const el = content();
-    if (el) {
+    if (el && settings.animate) {
       el.style.transition = "transform 240ms cubic-bezier(0.32, 0.72, 0, 1)";
       setTimeout(() => el && (el.style.transition = ""), 260);
     }
     paint(to);
   };
 
+  /** Moves through a page bigger than the screen; false once its far edge is showing. */
+  const pan = (dir: 1 | -1) => {
+    const item = items[index];
+    if (item?.kind !== "pages") return false;
+    const { cw, ch } = layout(item);
+    const v = view.current;
+    if (ch * v.s > size.h + 1) {
+      const to = clamp({ ...v, y: v.y - dir * size.h * 0.85 }, cw, ch);
+      if (Math.abs(to.y - v.y) > 1) {
+        animateView(to);
+        return true;
+      }
+    }
+    if (cw * v.s > size.w + 1) {
+      const across = rtl ? -dir : dir;
+      const to = clamp({ ...v, x: v.x - across * size.w * 0.85 }, cw, ch);
+      if (Math.abs(to.x - v.x) > 1) {
+        animateView(to);
+        return true;
+      }
+    }
+    return false;
+  };
+
   const tap = (cx: number, cy: number) => {
     const r = box.current!.getBoundingClientRect();
     const px = cx - r.left;
     const py = cy - r.top;
-    const act = () =>
-      onTap(
-        tapAction(settings, px / r.width, py / r.height, axis === "x" && rtl),
+    const act = () => {
+      const action = tapAction(
+        settings,
+        px / r.width,
+        py / r.height,
+        axis === "x" && rtl,
       );
+      if (
+        action !== "menu" &&
+        settings.navigateToPan &&
+        pan(action === "next" ? 1 : -1)
+      )
+        return;
+      onTap(action);
+    };
     const st = g.current;
     if (!settings.doubleTapZoom || items[index]?.kind !== "pages") return act();
     const now = Date.now();
@@ -226,8 +299,14 @@ export function PagedViewer({
 
   const onPointerDown = (e: React.PointerEvent) => {
     const st = g.current;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      // The pointer already ended (fast taps on some devices).
+    }
     st.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    clearTimeout(st.pressTimer);
+    st.pressed = false;
     if (st.pointers.size === 2) {
       const [a, b] = [...st.pointers.values()];
       const r = box.current!.getBoundingClientRect();
@@ -251,6 +330,19 @@ export function PagedViewer({
     st.mode = null;
     st.moved = false;
     st.drag = 0;
+    const item = items[index];
+    if (settings.longTap && onLongPress && item?.kind === "pages") {
+      const el = document
+        .elementFromPoint(e.clientX, e.clientY)
+        ?.closest<HTMLElement>("[data-page]");
+      const page = el ? Number(el.dataset.page) : item.pages[0];
+      st.pressTimer = setTimeout(() => {
+        if (st.moved || st.pointers.size !== 1) return;
+        st.pressed = true;
+        clearTimeout(st.tapTimer);
+        onLongPress(page);
+      }, LONG_PRESS_MS);
+    }
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -288,6 +380,7 @@ export function PagedViewer({
     if (!st.mode) {
       if (Math.hypot(dx, dy) < 8) return;
       st.moved = true;
+      clearTimeout(st.pressTimer);
       const main = axis === "x" ? dx : dy;
       const cross = axis === "x" ? dy : dx;
       const v = view.current;
@@ -331,10 +424,12 @@ export function PagedViewer({
   const onPointerUp = (e: React.PointerEvent) => {
     const st = g.current;
     if (!st.pointers.has(e.pointerId)) return;
+    clearTimeout(st.pressTimer);
     if (e.type === "pointercancel") {
       st.pointers.clear();
       st.mode = null;
       st.drag = 0;
+      st.pressed = false;
       clearTimeout(st.tapTimer);
       place(0, true);
       return;
@@ -348,6 +443,11 @@ export function PagedViewer({
       return;
     }
     if (st.pointers.size) return;
+    if (st.pressed) {
+      st.pressed = false;
+      st.mode = null;
+      return;
+    }
     const dt = Math.max(1, Date.now() - st.startT);
     if (!st.moved && dt < 400 && e.type === "pointerup") {
       tap(e.clientX, e.clientY);
@@ -356,16 +456,13 @@ export function PagedViewer({
     if (st.mode === "page") {
       const port = axis === "x" ? size.w : size.h;
       const velocity = st.drag / dt;
-      const delta = -Math.sign(st.drag) * flip;
       if (
         Math.abs(st.drag) > port * 0.2 ||
         (Math.abs(velocity) > 0.45 && Math.abs(st.drag) > 24)
-      ) {
-        const target = index + delta;
-        if (target >= 0 && target < items.length) onTurn(delta);
-        else if (delta > 0 || target >= 0) onTurn(delta);
-        place(0, true);
-      } else place(0, true);
+      )
+        // Past either end, the reader moves to the neighboring chapter.
+        onTurn(-Math.sign(st.drag) * flip);
+      place(0, true);
     }
     st.mode = null;
     st.drag = 0;
@@ -415,7 +512,13 @@ export function PagedViewer({
     );
   };
 
-  useEffect(() => () => clearTimeout(g.current.tapTimer), []);
+  useEffect(() => {
+    const st = g.current;
+    return () => {
+      clearTimeout(st.tapTimer);
+      clearTimeout(st.pressTimer);
+    };
+  }, []);
 
   const lo = Math.max(0, index - 2);
   const hi = Math.min(items.length - 1, index + Math.max(2, settings.preload));
@@ -431,6 +534,7 @@ export function PagedViewer({
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
       onWheel={onWheel}
+      onContextMenu={(e) => settings.longTap && e.preventDefault()}
     >
       <div ref={track} className="absolute inset-0 will-change-transform">
         {size.w > 0 &&
@@ -445,7 +549,11 @@ export function PagedViewer({
             const v = initial(item);
             return (
               <div
-                key={item.kind === "pages" ? `p${item.pages[0]}` : item.kind}
+                key={
+                  item.kind === "pages"
+                    ? `p${item.pages[0]}${item.half === undefined ? "" : `-${item.half}`}`
+                    : item.kind
+                }
                 inert={i !== index}
                 aria-hidden={i !== index}
                 className="absolute overflow-hidden"
@@ -463,19 +571,21 @@ export function PagedViewer({
                     }}
                   >
                     {item.pages.map((p) => {
-                      const ratio = dims[p] ? dims[p][0] / dims[p][1] : 2 / 3;
                       const total = item.pages.reduce(
-                        (a, q) =>
-                          a + (dims[q] ? dims[q][0] / dims[q][1] : 2 / 3),
+                        (a, q) => a + ratioOf(q),
                         0,
                       );
+                      // The half read first is the left one, or the right one in RTL.
+                      const right =
+                        item.half !== undefined && (item.half === 1) !== rtl;
                       return (
                         <div
                           key={p}
-                          className="relative h-full"
-                          style={{ width: `${(ratio / total) * 100}%` }}
+                          data-page={p}
+                          className="relative h-full overflow-hidden"
+                          style={{ width: `${(ratioOf(p) / total) * 100}%` }}
                         >
-                          {!dims[p] && (
+                          {!dim(p) && (
                             <div className="absolute inset-0 grid place-items-center">
                               <Spinner />
                             </div>
@@ -487,8 +597,12 @@ export function PagedViewer({
                             load={
                               i >= index - 1 && i <= index + settings.preload
                             }
-                            onSize={onSize}
-                            className="relative block size-full object-contain"
+                            className={
+                              item.half === undefined
+                                ? `relative block size-full ${settings.scale === "stretch" ? "object-fill" : "object-contain"}`
+                                : "relative block h-full w-[200%] max-w-none"
+                            }
+                            style={right ? { marginLeft: "-100%" } : undefined}
                           />
                         </div>
                       );

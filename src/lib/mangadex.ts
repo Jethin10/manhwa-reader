@@ -331,10 +331,12 @@ export async function getPages(chapterId: string): Promise<PageImage[]> {
   cacheLife({ stale: 300, revalidate: 300, expire: 600 });
   const res = await api<{
     baseUrl: string;
-    chapter: { hash: string; data: string[] };
+    chapter: { hash: string; data: string[] | null } | null;
   }>(`/at-home/server/${chapterId}`);
-  return res.chapter.data.map((f) => {
-    const url = `${res.baseUrl}/data/${res.chapter.hash}/${f}`;
+  // External (licensed) chapters come back without a page list.
+  if (!res.baseUrl || !res.chapter?.data?.length) return [];
+  return res.chapter.data.map((f: string) => {
+    const url = `${res.baseUrl}/data/${res.chapter!.hash}/${f}`;
     return { src: img(url), hd: img(url, { hd: true }) };
   });
 }

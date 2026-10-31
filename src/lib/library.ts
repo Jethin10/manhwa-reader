@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { chapterKey } from "./titles";
 
 export type SavedSeries = {
   id: string;
@@ -25,9 +26,15 @@ export type TapLayout = "l" | "kindle" | "edge" | "sides" | "off";
 export type ReaderSettings = {
   mode: ReadingMode;
   // Paged modes
-  scale: "screen" | "width" | "height" | "original";
+  scale: "screen" | "stretch" | "width" | "height" | "original" | "smart";
+  /** Where a page larger than the screen starts: Mihon's "Zoom start position". */
+  zoomStart: "auto" | "left" | "right" | "center";
   spreads: boolean;
   spreadOffset: boolean;
+  /** Show wide (double-page) images as two pages in single-page modes. */
+  splitWide: boolean;
+  /** Tap zones scroll through a page taller or wider than the screen before turning it. */
+  navigateToPan: boolean;
   animate: boolean;
   // Long strip
   /** Side padding as a percentage of the screen width */
@@ -38,6 +45,8 @@ export type ReaderSettings = {
   tapLayout: TapLayout;
   invertTap: "none" | "horizontal" | "vertical" | "both";
   doubleTapZoom: boolean;
+  /** Long press a page for save, share and reload. */
+  longTap: boolean;
   volumeKeys: boolean;
   volumeInvert: boolean;
   // Display
@@ -58,14 +67,18 @@ export type ReaderSettings = {
 export const DEFAULT_READER: ReaderSettings = {
   mode: "auto",
   scale: "screen",
+  zoomStart: "auto",
   spreads: false,
   spreadOffset: false,
+  splitWide: false,
+  navigateToPan: true,
   animate: true,
   padding: 0,
   width: 800,
   tapLayout: "l",
   invertTap: "none",
   doubleTapZoom: true,
+  longTap: true,
   volumeKeys: true,
   volumeInvert: false,
   background: "black",
@@ -132,11 +145,14 @@ export function normalizeReader(raw: unknown): ReaderSettings {
           : r.fit === "width"
             ? "width"
             : undefined),
-      ["screen", "width", "height", "original"],
+      ["screen", "stretch", "width", "height", "original", "smart"],
       "screen",
     ),
+    zoomStart: pick(r.zoomStart, ["auto", "left", "right", "center"], "auto"),
     spreads: bool(r.spreads, legacyMode === "spread"),
     spreadOffset: bool(r.spreadOffset, false),
+    splitWide: bool(r.splitWide, false),
+    navigateToPan: bool(r.navigateToPan, true),
     animate: bool(r.animate, true),
     padding: number(r.padding, 0, 25, 0),
     width: [0, 640, 800, 1040].includes(r.width ?? -1) ? r.width! : 800,
@@ -151,6 +167,7 @@ export function normalizeReader(raw: unknown): ReaderSettings {
       "none",
     ),
     doubleTapZoom: bool(r.doubleTapZoom, true),
+    longTap: bool(r.longTap, true),
     volumeKeys: bool(r.volumeKeys, true),
     volumeInvert: bool(r.volumeInvert, false),
     background: pick(
@@ -176,6 +193,7 @@ const READER = "mr:reader";
 const POSITIONS = "mr:positions";
 const SERIES_READER = "mr:reader-series";
 const SERIES_MODE = "mr:reader-mode";
+const READ = "mr:read";
 const EVENT = "mr:library";
 
 function read<T>(key: string, fallback: T): T {
@@ -188,9 +206,26 @@ function read<T>(key: string, fallback: T): T {
 }
 
 function write(key: string, value: unknown) {
-  localStorage.setItem(key, JSON.stringify(value));
-  cache.clear();
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage full or blocked (private mode): keep working for this session.
+  }
+  invalidate(key);
   window.dispatchEvent(new Event(EVENT));
+}
+
+/**
+ * Drops only the snapshots that depend on `key`. Clearing everything would hand every
+ * subscriber a new object, so saving reading progress re-rendered every page of the reader.
+ */
+function invalidate(key: string) {
+  cache.delete(key);
+  if (key === READER || key === SERIES_READER)
+    for (const k of [...cache.keys()])
+      if (k.startsWith("reader-derived:")) cache.delete(k);
+  if (key === READ)
+    for (const k of [...cache.keys()]) if (k.startsWith("read:")) cache.delete(k);
 }
 
 // useSyncExternalStore needs referentially stable snapshots
@@ -259,7 +294,11 @@ export function saveProgress(
   positions[chapterId] = page;
   const keys = Object.keys(positions);
   if (keys.length > 300) delete positions[keys[0]];
-  localStorage.setItem(POSITIONS, JSON.stringify(positions));
+  try {
+    localStorage.setItem(POSITIONS, JSON.stringify(positions));
+  } catch {
+    // Storage full: progress for this chapter just isn't kept.
+  }
   const list = read<HistoryEntry[]>(HISTORY, []);
   const entry = list.find(
     (x) => x.id === seriesId && x.chapterId === chapterId,
@@ -342,5 +381,69 @@ export function removeHistory(id: string) {
   write(
     HISTORY,
     read<HistoryEntry[]>(HISTORY, []).filter((x) => x.id !== id),
+  );
+}
+
+/**
+ * Read chapters, per series. Chapters are keyed by number, so a chapter read from one
+ * source counts as read on every other; unnumbered extras fall back to their id.
+ */
+export function readKey(c: { id: string; number: string | null }) {
+  return chapterKey(c.number) ?? `id:${c.id}`;
+}
+const NO_READ: ReadonlySet<string> = new Set();
+export function useReadChapters(seriesId: string): ReadonlySet<string> {
+  return useSyncExternalStore(
+    subscribe,
+    () => {
+      const key = `read:${seriesId}`;
+      if (!cache.has(key))
+        cache.set(
+          key,
+          new Set(read<Record<string, string[]>>(READ, {})[seriesId] ?? []),
+        );
+      return cache.get(key) as ReadonlySet<string>;
+    },
+    () => NO_READ,
+  );
+}
+export function setChaptersRead(
+  seriesId: string,
+  keys: string[],
+  isRead: boolean,
+) {
+  const map = read<Record<string, string[]>>(READ, {});
+  const set = new Set(map[seriesId] ?? []);
+  // Only the keys that actually changed, so an undo restores exactly the old state.
+  const changed = keys.filter((k) => set.has(k) !== isRead);
+  for (const k of changed) {
+    if (isRead) set.add(k);
+    else set.delete(k);
+  }
+  if (!changed.length) return changed;
+  if (set.size) map[seriesId] = [...set].slice(-5000);
+  else delete map[seriesId];
+  // Most recently touched series last, so trimming drops the oldest.
+  const { [seriesId]: mine, ...rest } = map;
+  write(
+    READ,
+    Object.fromEntries(
+      [...Object.entries(rest), ...(mine ? [[seriesId, mine]] : [])].slice(-1000),
+    ),
+  );
+  return changed;
+}
+
+/** Read chapters for every series at once (library badges, Updates). */
+const NO_READ_MAP: Record<string, string[]> = {};
+export function useAllRead(): Record<string, string[]> {
+  return useSyncExternalStore(
+    subscribe,
+    () => {
+      const key = "read:*";
+      if (!cache.has(key)) cache.set(key, read<Record<string, string[]>>(READ, {}));
+      return cache.get(key) as Record<string, string[]>;
+    },
+    () => NO_READ_MAP,
   );
 }

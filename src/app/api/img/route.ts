@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
 import { validImageSignature } from "@/lib/image-signing";
+import { relayEnabled, relayUrl } from "@/lib/relay";
 
 const ALLOWED = [
   /^uploads\.mangadex\.org$/,
@@ -76,6 +77,7 @@ function getOriginal(target: URL, stableKey: string): Promise<Buffer> {
     }
     const buf = await withDownload(async () => {
       let lastErr: unknown;
+      let missing = false;
       for (let attempt = 0; attempt < 4; attempt++) {
         try {
           const referer = REFERERS.find(([re]) => re.test(target.hostname))?.[1];
@@ -90,11 +92,23 @@ function getOriginal(target: URL, stableKey: string): Promise<Buffer> {
           });
           if (res.ok) return Buffer.from(await res.arrayBuffer());
           lastErr = new Error(`upstream ${res.status}`);
-          if (res.status < 500 && res.status !== 429) break;
+          if (res.status === 403) break;
+          if (res.status < 500 && res.status !== 429) {
+            missing = true;
+            break;
+          }
         } catch (e) {
           lastErr = e;
         }
         await sleep(400 * 2 ** attempt);
+      }
+      // Hosts that refuse this server's IP may still serve Cloudflare's.
+      if (!missing && relayEnabled()) {
+        const referer = REFERERS.find(([re]) => re.test(target.hostname))?.[1];
+        const res = await fetch(relayUrl(target.href, { referer, ttl: 300 }), {
+          signal: AbortSignal.timeout(20000),
+        }).catch(() => null);
+        if (res?.ok) return Buffer.from(await res.arrayBuffer());
       }
       throw lastErr;
     });
@@ -134,6 +148,17 @@ export async function GET(request: Request) {
 
   // Small hosts (IMAGE_PROCESSING=off) pass originals through: resizing and upscaling with
   // sharp would queue every page behind a fraction of a CPU.
+  // &dl=<name> saves the page (the reader's long-press menu) instead of showing it.
+  const dl = (params.get("dl") ?? "").replace(/[^\w .-]+/g, "").slice(0, 120);
+  const headersFor = (type: string): HeadersInit => ({
+    "Content-Type": type,
+    ...CACHE_HEADERS,
+    ...(dl
+      ? {
+          "Content-Disposition": `attachment; filename="${dl}.${type.split("/")[1].replace("jpeg", "jpg")}"`,
+        }
+      : {}),
+  });
   const processing = process.env.IMAGE_PROCESSING !== "off";
   const width = processing ? Math.min(2000, Math.max(0, parseInt(params.get("w") ?? "") || 0)) : 0;
   const hd = processing && params.get("hd") === "1";
@@ -147,7 +172,7 @@ export async function GET(request: Request) {
     try {
       const buf = await getOriginal(target, stableKey);
       return new Response(new Uint8Array(buf), {
-        headers: { "Content-Type": mimeFor(target.pathname), ...CACHE_HEADERS },
+        headers: headersFor(mimeFor(target.pathname)),
       });
     } catch {
       return new Response("Upstream error", { status: 502 });
@@ -162,7 +187,7 @@ export async function GET(request: Request) {
 
   try {
     return new Response(new Uint8Array(await readFile(file)), {
-      headers: { "Content-Type": type, ...CACHE_HEADERS },
+      headers: headersFor(type),
     });
   } catch {
     // cache miss
@@ -202,6 +227,6 @@ export async function GET(request: Request) {
     .catch(() => {});
 
   return new Response(new Uint8Array(out), {
-    headers: { "Content-Type": type, ...CACHE_HEADERS },
+    headers: headersFor(type),
   });
 }

@@ -75,7 +75,7 @@ export function Settings() {
               Reset reader defaults
             </button>
             <p className="mt-3 text-xs text-secondary">
-              Use Save for this series inside the reader for a title-specific
+              In the reader, General › Keep for this series saves a title-specific
               preset.
             </p>
           </>

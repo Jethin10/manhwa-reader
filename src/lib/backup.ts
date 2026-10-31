@@ -12,6 +12,8 @@ const KEYS = [
   "mr:collection",
   "mr:preferences",
   "mr:playback-mode",
+  "mr:read",
+  "mr:reader-mode",
 ];
 const ID = /^[a-zA-Z0-9~._-]{1,240}$/;
 function record(v: unknown): Record<string, unknown> {
@@ -65,6 +67,27 @@ function clean(key: string, value: unknown): unknown {
       Object.entries(record(value))
         .slice(-300)
         .map(([k, v]) => [id(k), Math.floor(number(v, 100000))]),
+    );
+  if (key === "mr:read")
+    return Object.fromEntries(
+      Object.entries(record(value))
+        .slice(-1000)
+        .map(([k, v]) => {
+          if (!Array.isArray(v) || v.length > 5000)
+            throw new Error("The backup contains an invalid read list.");
+          return [id(k), v.map((x) => text(x, 260))];
+        }),
+    );
+  if (key === "mr:reader-mode")
+    return Object.fromEntries(
+      Object.entries(record(value))
+        .slice(-500)
+        .filter(([, v]) =>
+          ["auto", "webtoon", "webtoon-gaps", "ltr", "rtl", "vertical"].includes(
+            String(v),
+          ),
+        )
+        .map(([k, v]) => [id(k), v]),
     );
   if (key === "mr:reader-series")
     return Object.fromEntries(

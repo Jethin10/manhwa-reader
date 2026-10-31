@@ -213,15 +213,29 @@ export function AnimePlayer({
     <div
       className={`mx-auto px-4 py-6 sm:px-8 ${theater ? "max-w-none" : "max-w-[1500px]"}`}
     >
-      <Link href="/anime" className="text-sm text-secondary hover:text-white">
-        ‹ Back to anime
-      </Link>
-      <a
-        href="#series-watch-order"
-        className="ml-5 text-sm text-secondary hover:text-white"
-      >
-        Seasons & movies
-      </a>
+      <header className="flex items-center gap-3">
+        <Link
+          href="/anime"
+          aria-label="Back to anime"
+          className="grid size-10 shrink-0 place-items-center rounded-full bg-fill text-lg text-label/90 transition hover:bg-fill-2"
+        >
+          ‹
+        </Link>
+        <div className="min-w-0 flex-1">
+          <h1 className="display truncate text-[20px] leading-tight font-bold sm:text-2xl">
+            {anime.title}
+          </h1>
+          <p className="t-caption mt-0.5 text-secondary">
+            {episodes.length} episodes · {anime.sub} sub · {anime.dub} dub
+          </p>
+        </div>
+        <a
+          href="#series-watch-order"
+          className="shrink-0 rounded-full bg-fill px-3.5 py-2 text-xs font-medium text-label/90 transition hover:bg-fill-2"
+        >
+          Seasons
+        </a>
+      </header>
       <div
         className={`mt-5 grid gap-6 ${theater ? "" : "xl:grid-cols-[minmax(0,1fr)_310px]"}`}
       >
@@ -555,12 +569,7 @@ export function AnimePlayer({
           className="hidden h-44 w-28 rounded-xl object-cover sm:block"
         />
         <div>
-          <h1 className="display text-2xl font-bold sm:text-3xl">
-            {anime.title}
-          </h1>
-          <p className="mt-3 text-sm text-secondary">
-            {episodes.length} episodes · {anime.sub} sub · {anime.dub} dub
-          </p>
+          <h2 className="t-title3">About</h2>
           <p className="mt-4 max-w-2xl text-sm leading-7 text-secondary">
             {anime.description}
           </p>

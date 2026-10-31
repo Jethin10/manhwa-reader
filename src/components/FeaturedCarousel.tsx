@@ -1,5 +1,7 @@
 "use client";
 
+import { useHistory } from "@/lib/library";
+
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Series, Stats } from "@/lib/catalog";
@@ -132,9 +134,7 @@ function FeatureCard({ series: s, stats, priority }: { series: Series; stats?: S
             {cleanDescription(s.description)}
           </p>
           <div className="mt-5 flex items-center gap-3">
-            <Link href={`/series/${s.id}`} className="btn btn-primary px-7">
-              Start Reading
-            </Link>
+            <ReadNow id={s.id} />
             <Link href={`/series/${s.id}`} className="btn glass-light text-white">
               Details
             </Link>
@@ -167,5 +167,19 @@ function HeroArrow({ side, onClick }: { side: "left" | "right"; onClick: () => v
     >
       {side === "left" ? <ChevronLeft className="size-5" /> : <ChevronRight className="size-5" />}
     </button>
+  );
+}
+
+/** Continue where you left off, or start from the first chapter. */
+function ReadNow({ id }: { id: string }) {
+  const last = useHistory().find((h) => h.id === id);
+  return (
+    <Link
+      href={last ? `/series/${id}/chapter/${last.chapterId}` : `/series/${id}/start`}
+      prefetch={false}
+      className="btn btn-primary px-7"
+    >
+      {last ? `Continue${last.chapterNumber ? ` Ch. ${last.chapterNumber}` : ""}` : "Start Reading"}
+    </Link>
   );
 }

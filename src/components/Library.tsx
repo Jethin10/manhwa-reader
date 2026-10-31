@@ -16,11 +16,23 @@ import {
 import { removeWatch, useWatchHistory } from "./AnimeLibrary";
 import { CollectionPicker } from "./CollectionPicker";
 import { Cover } from "./SeriesCard";
+import { DownloadGlyph } from "./ChapterList";
+import { GearIcon } from "./Icons";
+import { useDownloads } from "@/lib/downloads";
+import {
+  useAutoRefresh,
+  useLibrarySeries,
+  useUnreadCounts,
+} from "@/lib/updates";
 export function Library() {
   const bookmarks = useBookmarks(),
     history = useHistory(),
     watchHistory = useWatchHistory(),
-    collection = useCollection();
+    collection = useCollection(),
+    downloads = Object.keys(useDownloads().saved),
+    unread = useUnreadCounts();
+  useAutoRefresh(useLibrarySeries());
+  const totalUnread = Object.values(unread).reduce((a, b) => a + b, 0);
   const [q, setQ] = useState(""),
     [media, setMedia] = useState("all"),
     [status, setStatus] = useState("all"),
@@ -50,8 +62,17 @@ export function Library() {
     .sort((a, b) =>
       sort === "title"
         ? a.title.localeCompare(b.title)
-        : b.updatedAt - a.updatedAt,
+        : sort === "unread"
+          ? (unread[b.id] ?? 0) - (unread[a.id] ?? 0)
+          : sort === "read"
+            ? lastRead(b) - lastRead(a)
+            : b.updatedAt - a.updatedAt,
     );
+  function lastRead(c: CollectionItem) {
+    return c.media === "anime"
+      ? (watchHistory.find((w) => w.anime.id === c.id)?.at ?? 0)
+      : (history.find((h) => h.id === c.id)?.at ?? 0);
+  }
   function base(c: CollectionItem) {
     return c.media === "anime" ? `/anime/${c.id}` : `/series/${c.id}`;
   }
@@ -80,12 +101,42 @@ export function Library() {
             {merged.size} saved titles on this device
           </p>
         </div>
-        <Link
-          href="/settings"
-          className="rounded-full bg-fill px-5 py-2.5 text-sm"
-        >
-          Backup & preferences
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/updates"
+            className="flex items-center gap-2 rounded-full bg-fill px-4 py-2.5 text-sm font-medium"
+          >
+            <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Updates
+            {totalUnread > 0 && (
+              <span className="rounded-full bg-accent px-1.5 text-[11px] font-semibold text-white tabular-nums">
+                {totalUnread > 999 ? "999+" : totalUnread}
+              </span>
+            )}
+          </Link>
+          <Link
+            href="/downloads"
+            className="flex items-center gap-2 rounded-full bg-fill px-4 py-2.5 text-sm font-medium"
+          >
+            <DownloadGlyph className="size-4" />
+            Downloads
+            {downloads.length > 0 && (
+              <span className="rounded-full bg-accent px-1.5 text-[11px] font-semibold text-white tabular-nums">
+                {downloads.length}
+              </span>
+            )}
+          </Link>
+          <Link
+            href="/settings"
+            aria-label="Backup and preferences"
+            title="Backup and preferences"
+            className="grid size-10 place-items-center rounded-full bg-fill"
+          >
+            <GearIcon className="size-[18px]" />
+          </Link>
+        </div>
       </div>
       <nav aria-label="Library media" className="mt-7 flex flex-wrap gap-2">
         {[
@@ -141,6 +192,8 @@ export function Library() {
           className="rounded-xl bg-fill px-3 py-2.5 text-sm"
         >
           <option value="recent">Recently saved</option>
+          <option value="read">Recently read</option>
+          <option value="unread">Most unread</option>
           <option value="title">Title A-Z</option>
         </select>
         <button
@@ -170,7 +223,7 @@ export function Library() {
               <Link
                 href={resume(c)}
                 prefetch={false}
-                className={view === "grid" ? "block" : "block w-16 shrink-0"}
+                className={`pressable relative ${view === "grid" ? "block" : "block w-16 shrink-0"}`}
               >
                 <Cover
                   cover={c.cover}
@@ -178,6 +231,14 @@ export function Library() {
                   sizes={view === "grid" ? "240px" : "64px"}
                   className="aspect-[2/3]"
                 />
+                {c.media === "series" && (unread[c.id] ?? 0) > 0 && (
+                  <span
+                    className="absolute top-1.5 left-1.5 min-w-6 rounded-md bg-accent px-1.5 py-0.5 text-center text-[12px] font-bold text-white tabular-nums shadow"
+                    aria-label={`${unread[c.id]} unread`}
+                  >
+                    {unread[c.id]}
+                  </span>
+                )}
               </Link>
               <div className="min-w-0 flex-1">
                 <Link
@@ -188,16 +249,22 @@ export function Library() {
                 </Link>
                 <p className="mt-1 text-xs text-secondary">
                   {c.media === "anime" ? "Anime" : c.type}
+                  {c.media === "series" && (unread[c.id] ?? 0) > 0
+                    ? ` · ${unread[c.id]} unread`
+                    : ""}
                 </p>
-                <div className="mt-3">
-                  <CollectionPicker item={c} />
-                </div>
-                <button
-                  onClick={() => remove(c)}
-                  className="mt-2 text-xs text-secondary hover:text-red-300"
-                >
-                  Remove
-                </button>
+                {/* Grid stays clean; List view is for managing titles. */}
+                {view === "list" && (
+                  <div className="mt-3 flex items-center gap-3">
+                    <CollectionPicker item={c} />
+                    <button
+                      onClick={() => remove(c)}
+                      className="text-xs text-secondary hover:text-red-300"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
               </div>
             </article>
           ))}

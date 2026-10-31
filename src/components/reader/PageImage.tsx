@@ -1,9 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { PageImage as Page } from "@/lib/catalog";
 import { retryUrl } from "@/lib/images";
 import type { ReaderSettings } from "@/lib/library";
+import { setPageSize } from "./page-sizes";
+
+/** Fired by the page menu to reload one page: `detail` is the page's src. */
+export const RELOAD_PAGE = "mr:reload-page";
 
 export function pageFilter(s: ReaderSettings) {
   const parts = [];
@@ -19,7 +24,7 @@ export function pageFilter(s: ReaderSettings) {
  * to the sharpened HD copy when the screen has more pixels than the original, and reports
  * its natural size so viewers can lay pages out before they finish loading.
  */
-export function PageImage({
+export const PageImage = memo(function PageImage({
   page,
   index,
   settings,
@@ -52,7 +57,21 @@ export function PageImage({
   const [failed, setFailed] = useState(false);
   const [hdReady, setHdReady] = useState(false);
   const [hdFailed, setHdFailed] = useState(false);
+  // Manual retries; after two, the source link has likely expired, so the chapter refreshes.
+  const [manual, setManual] = useState(0);
+  const router = useRouter();
   const active = load || near;
+
+  useEffect(() => {
+    const reload = (e: Event) => {
+      if ((e as CustomEvent<string>).detail !== page.src) return;
+      setFailed(false);
+      setHdReady(false);
+      setAttempt((a) => a + 1);
+    };
+    window.addEventListener(RELOAD_PAGE, reload);
+    return () => window.removeEventListener(RELOAD_PAGE, reload);
+  }, [page.src]);
 
   useEffect(() => {
     if (load || near || lazyMargin === undefined || !ref.current) return;
@@ -96,6 +115,7 @@ export function PageImage({
     setLoaded(true);
     if (!natural) {
       setNatural(el.naturalWidth);
+      setPageSize(page.src, el.naturalWidth, el.naturalHeight);
       onSize?.(index, el.naturalWidth, el.naturalHeight);
     }
   };
@@ -109,6 +129,8 @@ export function PageImage({
         <button
           onClick={(e) => {
             e.stopPropagation();
+            if (manual >= 1) router.refresh();
+            setManual((m) => m + 1);
             setFailed(false);
             setAttempt((a) => a + 1);
           }}
@@ -146,7 +168,7 @@ export function PageImage({
         if (hdReady) {
           setHdReady(false);
           setHdFailed(true);
-        } else if (attempt < 2)
+        } else if (attempt < 2 + manual)
           retryTimer.current = setTimeout(
             () => setAttempt((a) => a + 1),
             600 * (attempt + 1),
@@ -161,7 +183,7 @@ export function PageImage({
       }}
     />
   );
-}
+});
 
 export function Spinner({ className = "size-6" }: { className?: string }) {
   return (
