@@ -134,6 +134,22 @@ Episode/server metadata is cached and fetched concurrently. The browser deduplic
 
 `/api/anime/stream` serves only signed URLs on the playback host allowlist, rejects redirects, preserves HTTP Range responses, rewrites nested playlist URLs, and streams bytes through without transcoding. Manifests are briefly cached and recently played segments use a bounded 96 MiB memory cache. Disconnects cancel upstream transfers. The proxy supplies the public player's required referrer and does not expose arbitrary URL fetching. Media configuration is short-lived and cached; no account credentials or DRM extraction are involved.
 
+### Smooth playback at 1080p and 2x
+
+Three things keep high-bitrate playback ahead of the playhead, even far from the server:
+
+- **Cloudflare relay** (`relay/worker.js`). When `RELAY_URL` and `RELAY_KEY` are set, playlists stay on the app server but video segments stream from a Cloudflare Worker near the viewer. Its edge cache makes rewatches free, and the app server carries no video bandwidth. The video CDN rejects requests made from other websites, so the browser can't fetch segments directly. The Worker only relays URLs the server signed, with an expiry. To deploy it: `cd relay`, `npx wrangler deploy`, `npx wrangler secret put RELAY_KEY`, then set the same key and the Worker URL on the app server. Sources that block the app server's IP also fall back to the relay.
+- **Parallel segment loading** (`src/lib/hls-prefetch.ts`). hls.js normally loads one segment at a time. The custom loader fetches the next 3–4 in parallel. It also sends one-byte warm-up requests for the following 8, because the CDN is slow the first time each segment is requested.
+- **Speed-aware buffer.** The buffer target is measured in seconds of video, so it scales with playback speed. At 2x it holds twice as much.
+
+Measured from Delhi against the Oregon server at 1080p and 2x:
+
+| | Before | After |
+|---|---|---|
+| Video throughput | about 8 Mbps | 32–42 Mbps |
+| Startup | up to 18 s | 1.8 s |
+| Pauses after startup | several | none |
+
 Anime metadata and server links come from HiAnime.tr, an independent site using the HiAnime name. Maximum quality depends on the original upload and available bitrate. Auto mode can reduce stalls on weaker connections; forcing 1080p cannot make a connection sustain more video data than it can download.
 
 ## Images and local data
