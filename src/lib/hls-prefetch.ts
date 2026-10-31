@@ -53,6 +53,20 @@ export function prefetchingLoader(levels: () => Levels, ahead: () => number) {
     return data;
   };
 
+  // The source CDN is slow the first time each segment is requested (cache miss at its
+  // origin). A one-byte range request makes it fetch the segment early, so the full
+  // download a few seconds later is a fast cache hit.
+  const WARM_AHEAD = 8;
+  const warmed = new Set<string>();
+  const warm = (url: string) => {
+    if (warmed.has(url) || cache.has(url)) return;
+    warmed.add(url);
+    if (warmed.size > 400) warmed.delete(warmed.values().next().value!);
+    fetch(url, { headers: { Range: "bytes=0-0" } })
+      .then((res) => res.body?.cancel())
+      .catch(() => {});
+  };
+
   return class PrefetchLoader implements Loader<FragmentLoaderContext> {
     context: FragmentLoaderContext | null = null;
     stats: LoaderStats = newStats();
@@ -72,11 +86,18 @@ export function prefetchingLoader(levels: () => Levels, ahead: () => number) {
       const ranged = !!context.rangeEnd;
       const details = levels()[context.frag.level]?.details;
       const sn = context.frag.sn;
-      if (!ranged && details && typeof sn === "number")
-        for (let k = 1; k <= ahead(); k++) {
-          const next = details.fragments[sn - details.startSN + k];
+      if (!ranged && details && typeof sn === "number") {
+        const at = sn - details.startSN;
+        const n = ahead();
+        for (let k = 1; k <= n; k++) {
+          const next = details.fragments[at + k];
           if (next) grab(next.url);
         }
+        for (let k = n + 1; k <= n + WARM_AHEAD; k++) {
+          const later = details.fragments[at + k];
+          if (later) warm(later.url);
+        }
+      }
 
       const data = ranged
         ? fetch(context.url, {
