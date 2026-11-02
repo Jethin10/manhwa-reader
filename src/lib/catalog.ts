@@ -117,11 +117,11 @@ export async function browseSeries(opts: dex.BrowseOptions & { source?: SourceId
       )
     : [source];
   const jobs = ids.map((p) => providers[p].browse(opts));
-  // Mixed results show whatever arrived within a few seconds, but never an empty page while a
+  // Mixed results show whatever arrived within 4 seconds, but never an empty page while a
   // source is still on its way. A slow source still fills its cache in the background, so the
   // next visit includes it.
   const results = all
-    ? await settleSoon(jobs, 6000, 20000, ids.map(nameOf))
+    ? await settleSoon(jobs, 4000, 20000, ids.map(nameOf))
     : await Promise.allSettled(jobs);
   const warnings: string[] = [];
   const good = results.flatMap((r, i) => {
