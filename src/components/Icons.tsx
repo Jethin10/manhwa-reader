@@ -284,3 +284,9 @@ export const ExpandIcon = ({ className = "size-4" }: P) => (
     <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
   </svg>
 );
+
+export const PlayIcon = ({ className = "size-4" }: P) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
+    <path d="M7 4.6v14.8a1 1 0 0 0 1.52.85l12.1-7.4a1 1 0 0 0 0-1.7L8.52 3.75A1 1 0 0 0 7 4.6Z" />
+  </svg>
+);

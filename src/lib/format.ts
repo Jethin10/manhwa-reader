@@ -31,3 +31,12 @@ export function cleanDescription(d: string) {
     .replace(/[*_]{1,2}([^*_]+)[*_]{1,2}/g, "$1")
     .trim();
 }
+
+/**
+ * A readable message for an error shown to the user. Production builds replace the message of
+ * an error thrown inside a cached function with a generic notice, which means nothing to a reader.
+ */
+export function errorText(e: unknown, fallback: string) {
+  const m = e instanceof Error ? e.message : "";
+  return !m || /Server Components render|digest/i.test(m) ? fallback : m;
+}

@@ -5,6 +5,9 @@ import { useSyncExternalStore } from "react";
 import type { Anime } from "@/lib/anime";
 import { coverSrc } from "@/lib/images";
 import { useCollection } from "@/lib/collection";
+import { Cover } from "./SeriesCard";
+import { Shelf, ShelfItem } from "./Shelf";
+import { PlayIcon } from "./Icons";
 export type WatchEntry = {
   anime: Anime;
   episodeId: string;
@@ -70,6 +73,57 @@ export function removeWatch(id: string) {
   memo = undefined;
   window.dispatchEvent(new Event(EVENT));
 }
+// Episodes watched to the end, per anime: the episode list marks them like read chapters.
+const WATCHED = "mr:watched",
+  WATCHED_EVENT = "mr:watched";
+const noEpisodes: string[] = [];
+let watchedMemo: Record<string, string[]> | undefined;
+function watchedSnapshot() {
+  if (!watchedMemo) {
+    try {
+      watchedMemo = JSON.parse(localStorage.getItem(WATCHED) ?? "{}");
+    } catch {
+      watchedMemo = {};
+    }
+  }
+  return watchedMemo!;
+}
+function subscribeWatched(cb: () => void) {
+  const fn = () => {
+    watchedMemo = undefined;
+    cb();
+  };
+  window.addEventListener(WATCHED_EVENT, fn);
+  window.addEventListener("storage", fn);
+  return () => {
+    window.removeEventListener(WATCHED_EVENT, fn);
+    window.removeEventListener("storage", fn);
+  };
+}
+export function markWatched(animeId: string, episodeId: string) {
+  const all = watchedSnapshot();
+  if (all[animeId]?.includes(episodeId)) return;
+  try {
+    localStorage.setItem(
+      WATCHED,
+      JSON.stringify({ ...all, [animeId]: [...(all[animeId] ?? []), episodeId] }),
+    );
+    watchedMemo = undefined;
+    window.dispatchEvent(new Event(WATCHED_EVENT));
+  } catch {}
+}
+export function useWatched(animeId: string) {
+  return useSyncExternalStore(
+    subscribeWatched,
+    () => watchedSnapshot()[animeId] ?? noEpisodes,
+    () => noEpisodes,
+  );
+}
+/** Most recent episode watched in an anime, to resume when it's opened without an episode. */
+export function lastWatch(animeId: string) {
+  return snapshot().find((x) => x.anime.id === animeId);
+}
+
 export function ContinueWatching() {
   const collection = useCollection();
   const history = useWatchHistory().filter(
@@ -83,33 +137,41 @@ export function ContinueWatching() {
   );
   if (!history.length) return null;
   return (
-    <section className="mt-10">
-      <h2 className="t-title2">Continue Watching</h2>
-      <div className="no-scrollbar mt-5 flex gap-4 overflow-x-auto pb-3">
-        {history.map((h) => (
-          <Link
-            key={h.anime.id}
-            href={`/anime/${h.anime.id}?ep=${h.episodeId}&audio=${h.language}`}
-            className="flex w-72 shrink-0 items-center gap-4 rounded-2xl bg-card p-3 transition hover:bg-fill-2"
-          >
-            <img
-              src={coverSrc(h.anime.cover, 200)}
-              alt=""
-              className="h-24 w-16 rounded-lg object-cover"
-            />
-            <div>
-              <h3 className="line-clamp-2 text-sm font-medium">
-                {h.anime.title}
-              </h3>
-              <p className="mt-2 text-xs text-secondary">
-                Resume episode {h.episodeNumber} ·{" "}
-                {h.language === "dub" ? "English dub" : "Subtitled"}
+    <Shelf title="Continue Watching" href="/bookmarks">
+      {history.slice(0, 16).map((h) => {
+        const progress = h.time && h.duration ? Math.min(1, h.time / h.duration) : 0;
+        return (
+          <ShelfItem key={h.anime.id}>
+            <Link
+              href={`/anime/${h.anime.id}?ep=${h.episodeId}&audio=${h.language}`}
+              className="group pressable block"
+            >
+              <div className="relative">
+                <Cover
+                  cover={h.anime.cover}
+                  alt={h.anime.title}
+                  sizes="(min-width: 640px) 164px, 132px"
+                  className="aspect-[2/3]"
+                />
+                <div className="absolute inset-x-2.5 bottom-2.5 h-[4px] overflow-hidden rounded-full bg-black/40 backdrop-blur-sm">
+                  <div
+                    className="h-full rounded-full bg-white"
+                    style={{ width: `${Math.round(progress * 100)}%` }}
+                  />
+                </div>
+              </div>
+              <p className="t-footnote mt-2 line-clamp-1 font-medium">{h.anime.title}</p>
+              <p className="t-caption text-secondary">
+                Episode {h.episodeNumber} · {h.language === "dub" ? "Dub" : "Sub"}
+                {h.time && h.duration && h.duration - h.time > 60
+                  ? ` · ${Math.ceil((h.duration - h.time) / 60)} min left`
+                  : ""}
               </p>
-            </div>
-          </Link>
-        ))}
-      </div>
-    </section>
+            </Link>
+          </ShelfItem>
+        );
+      })}
+    </Shelf>
   );
 }
 export function AnimeCard({ anime: a }: { anime: Anime }) {
@@ -124,7 +186,7 @@ export function AnimeCard({ anime: a }: { anime: Anime }) {
         />
         <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition group-hover:opacity-100">
           <span className="grid size-12 place-items-center rounded-full bg-white text-black">
-            ▶
+            <PlayIcon className="ml-0.5 size-5" />
           </span>
         </div>
         <div className="absolute inset-x-0 bottom-0 flex gap-1 bg-gradient-to-t from-black/90 to-transparent px-2 pt-8 pb-2 text-[10px] font-semibold">

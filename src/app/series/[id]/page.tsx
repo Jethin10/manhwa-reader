@@ -5,7 +5,7 @@ import { getChapters, getSeries, getStats, type Chapter } from "@/lib/catalog";
 import { getMergedChapters } from "@/lib/unified";
 import { providerOf, sourceOf } from "@/lib/sources";
 import { coverSrc, coverSrcSet } from "@/lib/images";
-import { cap, cleanDescription } from "@/lib/format";
+import { cap, cleanDescription, errorText } from "@/lib/format";
 import { SourceIssue } from "@/components/SourceIssue";
 import { CollectionPicker } from "@/components/CollectionPicker";
 import { BookmarkButton } from "@/components/BookmarkButton";
@@ -34,7 +34,7 @@ async function SeriesContent({ params }: { params: PageProps<"/series/[id]">["pa
   try {
     return await LoadSeries({ params });
   } catch (e) {
-    return <SourceIssue message={e instanceof Error ? e.message : "The source could not load this series."} />;
+    return <SourceIssue message={errorText(e, "The source could not load this series. Try again in a moment.")} />;
   }
 }
 

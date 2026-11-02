@@ -2,7 +2,9 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { browseAnime } from "@/lib/anime";
 import { AnimeCard, ContinueWatching } from "@/components/AnimeLibrary";
+import { PlayIcon } from "@/components/Icons";
 import { coverSrc } from "@/lib/images";
+import { errorText } from "@/lib/format";
 
 export const metadata = { title: "Anime" };
 const categories = [
@@ -44,7 +46,7 @@ async function AnimeContent({
       <div className="mx-auto max-w-[1000px] px-5 py-20">
         <h1 className="t-large">Anime</h1>
         <p role="alert" className="mt-6 text-secondary">
-          {e instanceof Error ? e.message : "Catalog unavailable."}
+          {errorText(e, "The anime catalog isn't responding. Try again in a moment.")}
         </p>
         <Link
           href="/anime"
@@ -84,7 +86,7 @@ async function AnimeContent({
                 href={`/anime/${featured.id}`}
                 className="mt-8 inline-flex items-center gap-3 rounded-full bg-white px-7 py-3.5 text-sm font-semibold text-black transition hover:bg-white/85"
               >
-                <span aria-hidden>▶</span> Start watching
+                <PlayIcon className="size-4" /> Start watching
               </Link>
             </div>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -96,8 +98,10 @@ async function AnimeContent({
           </div>
         </section>
       )}
-      <div className="gutter mx-auto max-w-[1440px]">
+      <div className="mt-10">
         <ContinueWatching />
+      </div>
+      <div className="gutter mx-auto max-w-[1440px]">
         <div className="mt-10 flex flex-wrap items-end justify-between gap-5">
           <div>
             <h2 className="t-title1">

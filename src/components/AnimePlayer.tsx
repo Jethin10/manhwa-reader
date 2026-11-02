@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type { Anime, AnimeServer, Episode } from "@/lib/anime";
-import { savedWatch, saveWatch } from "./AnimeLibrary";
+import { lastWatch, markWatched, savedWatch, saveWatch, useWatched } from "./AnimeLibrary";
+import { CheckIcon, ChevronLeft, ChevronRight, PlayIcon } from "./Icons";
 import { clearPlaybackCache, loadMedia, loadServers } from "@/lib/anime-client";
 import type { PlaybackMedia } from "@/lib/anime-playback";
 import { CollectionPicker } from "./CollectionPicker";
-import { PlaybackOptions } from "./PreferenceControls";
+import { Check, PlaybackOptions } from "./PreferenceControls";
 import { usePreferences, updatePreferences } from "@/lib/preferences";
 import { coverSrc } from "@/lib/images";
 const AdaptiveVideo = dynamic(() => import("./AdaptiveVideo"), {
@@ -43,6 +44,17 @@ export function AnimePlayer({
     episodes.find((e) => e.id === initialEpisode)?.id ?? episodes[0]?.id ?? "",
   );
   const prefs = usePreferences();
+  const watched = useWatched(anime.id);
+  // Opened without a chosen episode: pick up where the last session stopped.
+  useEffect(() => {
+    if (initialEpisode) return;
+    const last = lastWatch(anime.id);
+    if (!last || !episodes.some((e) => e.id === last.episodeId)) return;
+    if (!initialAudio) setAudioOverride(last.language);
+    if (last.episodeId !== episodeId) chooseEpisode(last.episodeId);
+    // Only on arrival; later episode changes are the viewer's own.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anime.id]);
   const [audioOverride, setAudioOverride] = useState(initialAudio);
   const language = audioOverride ?? prefs.audio;
   function setLanguage(audio: "sub" | "dub") {
@@ -163,6 +175,8 @@ export function AnimePlayer({
   );
   const onProgress = useCallback(
     (time: number, duration: number) => {
+      // Past the end credits counts as watched.
+      if (duration > 0 && time / duration > 0.85) markWatched(anime.id, episodeId);
       if (episode)
         saveWatch({
           anime,
@@ -208,7 +222,7 @@ export function AnimePlayer({
     (filter ? 0 : episodeWindow) * 50 + 50,
   );
   const button =
-    "rounded-full bg-fill px-4 py-2 text-xs font-medium transition hover:bg-fill-2 disabled:cursor-not-allowed disabled:opacity-30";
+    "inline-flex items-center gap-1 rounded-full bg-fill px-4 py-2 text-xs font-medium transition hover:bg-fill-2 disabled:cursor-not-allowed disabled:opacity-30";
   return (
     <div
       className={`mx-auto px-4 py-6 sm:px-8 ${theater ? "max-w-none" : "max-w-[1500px]"}`}
@@ -217,9 +231,9 @@ export function AnimePlayer({
         <Link
           href="/anime"
           aria-label="Back to anime"
-          className="grid size-10 shrink-0 place-items-center rounded-full bg-fill text-lg text-label/90 transition hover:bg-fill-2"
+          className="grid size-10 shrink-0 place-items-center rounded-full bg-fill text-label/90 transition hover:bg-fill-2"
         >
-          ‹
+          <ChevronLeft className="size-5" />
         </Link>
         <div className="min-w-0 flex-1">
           <h1 className="display truncate text-[20px] leading-tight font-bold sm:text-2xl">
@@ -288,8 +302,8 @@ export function AnimePlayer({
                   onClick={() => setStarted(true)}
                   className="relative flex flex-col items-center gap-4"
                 >
-                  <span className="grid size-16 place-items-center rounded-full bg-white pl-1 text-2xl text-black shadow-lg transition hover:scale-105 sm:size-20">
-                    ▶
+                  <span className="grid size-16 place-items-center rounded-full bg-white text-black shadow-lg transition hover:scale-105 sm:size-20">
+                    <PlayIcon className="ml-1 size-7 sm:size-8" />
                   </span>
                   <span className="text-sm font-medium">
                     Play episode {episode?.number} ·{" "}
@@ -364,7 +378,7 @@ export function AnimePlayer({
                 disabled={index <= 0}
                 onClick={() => chooseEpisode(episodes[index - 1].id)}
               >
-                ‹ Previous
+                <ChevronLeft className="size-3.5" /> Previous
               </button>
               <button
                 className={button}
@@ -373,7 +387,7 @@ export function AnimePlayer({
                 onFocus={warmNext}
                 onClick={() => chooseEpisode(episodes[index + 1].id)}
               >
-                Next ›
+                Next <ChevronRight className="size-3.5" />
               </button>
               <button className={button} onClick={() => setTheater((t) => !t)}>
                 {theater ? "Default view" : "Theater"}
@@ -484,21 +498,13 @@ export function AnimePlayer({
               </p>
             </div>
           </details>
-          <label className="mt-3 inline-flex items-center gap-2 text-xs text-secondary">
-            <input
-              type="checkbox"
+          <div className="mt-3">
+            <Check
+              label="Auto-play next episode"
               checked={autoNext}
-              onChange={(e) => setAutoNext(e.target.checked)}
-              className="accent-[#a78bfa]"
+              onChange={setAutoNext}
             />
-            Auto-play next episode
-          </label>
-          <p className="mt-3 text-xs leading-relaxed text-tertiary">
-            Adaptive HD picks a sustainable quality and buffers ahead. Use
-            Smooth on slower connections, or choose a resolution inside the
-            video. Available quality depends on the upload; slow connections
-            cannot sustain every resolution.
-          </p>
+          </div>
         </div>
         <aside className="flex max-h-[680px] min-h-64 flex-col overflow-hidden rounded-2xl bg-card ring-1 ring-white/[0.06]">
           <div className="border-b border-hairline p-5">
@@ -544,19 +550,22 @@ export function AnimePlayer({
                 key={e.id}
                 aria-current={e.id === episodeId ? "true" : undefined}
                 onClick={() => chooseEpisode(e.id)}
-                className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${e.id === episodeId ? "bg-accent/20 text-white" : "text-secondary hover:bg-fill"}`}
+                className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${e.id === episodeId ? "bg-accent/20 text-white" : watched.includes(e.id) ? "text-tertiary hover:bg-fill" : "text-label/90 hover:bg-fill"}`}
               >
                 <span
                   className={`grid size-9 shrink-0 place-items-center rounded-lg text-xs tabular-nums ${e.id === episodeId ? "bg-accent text-white" : "bg-fill"}`}
                 >
-                  {e.id === episodeId ? "▶" : e.number}
+                  {e.id === episodeId ? <PlayIcon className="ml-0.5 size-3.5" /> : e.number}
                 </span>
-                <span className="line-clamp-2 text-xs leading-relaxed">
+                <span className="line-clamp-2 min-w-0 flex-1 text-xs leading-relaxed">
                   {e.title}
                   {e.filler && (
                     <span className="ml-2 text-amber-300">Filler</span>
                   )}
                 </span>
+                {watched.includes(e.id) && e.id !== episodeId && (
+                  <CheckIcon className="size-3.5 shrink-0 text-success" />
+                )}
               </button>
             ))}
           </div>

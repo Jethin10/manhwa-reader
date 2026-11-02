@@ -15,6 +15,7 @@ import { getMergedChapters, versionsOf } from "@/lib/unified";
 import { chapterKey } from "@/lib/titles";
 import { Reader, type ChapterNav } from "@/components/Reader";
 import { SourceIssue } from "@/components/SourceIssue";
+import { errorText } from "@/lib/format";
 
 type Props = PageProps<"/series/[id]/chapter/[chapterId]">;
 
@@ -58,11 +59,7 @@ async function ChapterContent(props: Pick<Props, "params" | "searchParams">) {
     unstable_rethrow(e);
     return (
       <SourceIssue
-        message={
-          e instanceof Error
-            ? e.message
-            : "The source could not load this chapter."
-        }
+        message={errorText(e, "The source could not load this chapter. Try again in a moment.")}
       />
     );
   }

@@ -34,6 +34,8 @@ export type Series = {
   artists: string[];
   lastChapter: string | null;
   updatedAt: string;
+  /** Rating and follows, when the source's listing already includes them. */
+  stats?: Stats;
 };
 
 export type Chapter = {

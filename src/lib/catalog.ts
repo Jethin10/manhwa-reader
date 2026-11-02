@@ -5,6 +5,7 @@ import * as weebcentral from "./weebcentral";
 import * as mangapill from "./mangapill";
 import { PROVIDERS, providerOf, qualityOf, type ProviderId, type SourceId } from "./sources";
 import { sameTitle } from "./titles";
+import { errorText } from "./format";
 export type {
   BrowseOptions,
   Chapter,
@@ -78,6 +79,34 @@ export function withTimeout<T>(promise: Promise<T>, ms: number, label: string) {
   ]);
 }
 
+/**
+ * Settles like Promise.allSettled, but stops waiting after `soft` ms once any job has
+ * succeeded, and after `hard` ms regardless. Jobs still running count as timed out.
+ */
+function settleSoon<T>(jobs: Promise<T>[], soft: number, hard: number, labels: string[]) {
+  const out: (PromiseSettledResult<T> | undefined)[] = jobs.map(() => undefined);
+  return new Promise<PromiseSettledResult<T>[]>((resolve) => {
+    let late = false;
+    const finish = () =>
+      resolve(
+        out.map(
+          (r, i) => r ?? { status: "rejected", reason: new Error(`${labels[i]} took too long to respond.`) },
+        ),
+      );
+    const check = () => {
+      if (out.every(Boolean) || (late && out.some((r) => r?.status === "fulfilled"))) finish();
+    };
+    jobs.forEach((job, i) =>
+      job.then(
+        (value) => ((out[i] = { status: "fulfilled", value }), check()),
+        (reason) => ((out[i] = { status: "rejected", reason }), check()),
+      ),
+    );
+    setTimeout(() => ((late = true), check()), soft);
+    setTimeout(finish, hard);
+  });
+}
+
 export async function browseSeries(opts: dex.BrowseOptions & { source?: SourceId } = {}) {
   const source = opts.source ?? "all";
   const all = source === "all";
@@ -87,17 +116,18 @@ export async function browseSeries(opts: dex.BrowseOptions & { source?: SourceId
         (p) => p !== "mangapill" || !!opts.q,
       )
     : [source];
-  const results = await Promise.allSettled(
-    ids.map((p) => {
-      const job = providers[p].browse(opts);
-      return all ? withTimeout(job, 12000, nameOf(p)) : job;
-    }),
-  );
+  const jobs = ids.map((p) => providers[p].browse(opts));
+  // Mixed results show whatever arrived within a few seconds, but never an empty page while a
+  // source is still on its way. A slow source still fills its cache in the background, so the
+  // next visit includes it.
+  const results = all
+    ? await settleSoon(jobs, 6000, 20000, ids.map(nameOf))
+    : await Promise.allSettled(jobs);
   const warnings: string[] = [];
   const good = results.flatMap((r, i) => {
     if (r.status === "fulfilled") return [r.value];
     warnings.push(
-      `${nameOf(ids[i])}: ${r.reason instanceof Error ? r.reason.message : "Source unavailable."}`,
+      errorText(r.reason, `${nameOf(ids[i])} isn't responding right now. Try All sources.`),
     );
     return [];
   });
@@ -130,18 +160,30 @@ export const getAllUploads = (id: string) => {
 export const getChapter = (id: string) => of(id).chapter(id);
 export const getPages = (id: string) => of(id).pages(id);
 
-export async function getStats(ids: string[]) {
-  const dexIds = ids.filter((id) => providerOf(id) === "mangadex");
-  const stats = dexIds.length
-    ? await dex.getStats(dexIds).catch(() => ({}) as Record<string, dex.Stats>)
-    : {};
-  await Promise.allSettled(
-    ids
-      .filter((id) => providerOf(id) === "asura")
-      .map(async (id) => {
-        const s = await asura.asuraDetail(id);
-        stats[id] = { rating: s.rating ?? null, follows: s.bookmark_count ?? 0 };
-      }),
-  );
-  return stats;
+/** Ratings and follows for a set of series. Accepts series that already carry their stats. */
+export async function getStats(items: (string | Pick<dex.Series, "id" | "stats">)[]) {
+  const stats: Record<string, dex.Stats> = {};
+  const missing: string[] = [];
+  for (const item of items) {
+    if (typeof item !== "string" && item.stats) stats[item.id] = item.stats;
+    else missing.push(typeof item === "string" ? item : item.id);
+  }
+  const dexIds = missing.filter((id) => providerOf(id) === "mangadex");
+  // Stats only decorate the page, so they never hold it up for long.
+  await withTimeout(
+    Promise.allSettled([
+      dexIds.length
+        ? dex.getStats(dexIds).then((s) => Object.assign(stats, s))
+        : null,
+      ...missing
+        .filter((id) => providerOf(id) === "asura")
+        .map(async (id) => {
+          const s = await asura.asuraDetail(id);
+          stats[id] = { rating: s.rating ?? null, follows: s.bookmark_count ?? 0 };
+        }),
+    ]),
+    2500,
+    "Stats",
+  ).catch(() => {});
+  return { ...stats };
 }

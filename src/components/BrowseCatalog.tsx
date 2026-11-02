@@ -90,7 +90,7 @@ async function Browse({
       page,
     }),
   ]);
-  const stats = await getStats(result.series.map((s) => s.id));
+  const stats = await getStats(result.series);
   const genres = tags.filter((t) => t.group === "genre" || t.group === "theme");
 
   const pageHref = (p: number) => {
@@ -235,7 +235,11 @@ async function Browse({
       ))}
       {result.series.length === 0 ? (
         <p className="grouped t-callout mt-10 p-14 text-center text-secondary">
-          No matches. Try a different title or filter.
+          {source === "mangapill" && !q
+            ? "MangaPill only lists titles you search for. Type a title above."
+            : result.warnings.length
+              ? "Nothing loaded from this source right now. Try All sources."
+              : "No matches. Try a different title or filter."}
         </p>
       ) : (
         <div className="mt-7 grid grid-cols-3 gap-x-3 gap-y-6 sm:grid-cols-4 sm:gap-x-5 sm:gap-y-8 md:grid-cols-5 lg:grid-cols-6 2xl:grid-cols-7">

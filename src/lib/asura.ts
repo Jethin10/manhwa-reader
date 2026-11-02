@@ -61,6 +61,7 @@ function mapSeries(s: RawSeries): Series {
     contentRating: "safe",
     lastChapter: null,
     updatedAt: s.updated_at,
+    stats: s.rating != null ? { rating: s.rating, follows: s.bookmark_count ?? 0 } : undefined,
   };
 }
 export async function browseAsura(opts: BrowseOptions) {

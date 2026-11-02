@@ -10,6 +10,7 @@ import {
 } from "@/lib/catalog";
 import { FeaturedCarousel } from "@/components/FeaturedCarousel";
 import { ContinueReading } from "@/components/ContinueReading";
+import { ContinueWatching } from "@/components/AnimeLibrary";
 import { Cover, SeriesCard } from "@/components/SeriesCard";
 import { Shelf, ShelfItem } from "@/components/Shelf";
 import { TimeAgo } from "@/components/TimeAgo";
@@ -32,6 +33,7 @@ export default function Home() {
         <Featured />
       </Suspense>
       <ContinueReading />
+      <ContinueWatching />
       <Suspense fallback={<ShelfSkeleton />}>
         <TopCharts />
       </Suspense>
@@ -82,7 +84,7 @@ async function Featured() {
         The catalog is unavailable. Try Browse or Anime.
       </div>
     );
-  const stats = await getStats(series.map((s) => s.id));
+  const stats = await getStats(series);
   return <FeaturedCarousel items={series} stats={stats} />;
 }
 
@@ -140,7 +142,7 @@ async function SeriesShelf({
     limit: 16,
   });
   if (!series.length) return null;
-  const stats = await getStats(series.map((s) => s.id));
+  const stats = await getStats(series);
   return (
     <Shelf title={title} href={href}>
       {series.map((s) => (

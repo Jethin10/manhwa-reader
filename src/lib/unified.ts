@@ -10,6 +10,7 @@ import {
 } from "./catalog";
 import { PROVIDERS, providerOf, qualityOf, sourceOf, type ProviderId } from "./sources";
 import { chapterKey, sameTitle } from "./titles";
+import { errorText } from "./format";
 
 export type SourceSummary = {
   id: string;
@@ -28,23 +29,29 @@ const latin = (t: string) => /^[\x20-\x7e]+$/.test(t);
 /** The same title on every other source, found by title search and matched on normalized titles. */
 export async function findMirrors(id: string): Promise<string[]> {
   "use cache";
-  cacheLife("hours");
   const series = await getSeries(id);
   const queries = [series.title, ...series.altTitles.filter(latin).slice(0, 2)];
+  // Every title variant is searched at once, and a slow source only loses its own match.
   const found = await Promise.allSettled(
-    PROVIDERS.filter((p) => p.id !== providerOf(id)).map(async (p) => {
-      for (const q of queries) {
-        const page = await withTimeout(
-          providers[p.id].browse({ q, type: "all", limit: 12 }),
-          10000,
-          p.name,
-        );
-        const hit = page.series.find((s) => sameTitle(s, series));
-        if (hit) return hit.id;
-      }
-      return null;
-    }),
+    PROVIDERS.filter((p) => p.id !== providerOf(id)).map((p) =>
+      withTimeout(
+        Promise.any(
+          queries.map(async (q) => {
+            const page = await providers[p.id].browse({ q, type: "all", limit: 12 });
+            const hit = page.series.find((s) => sameTitle(s, series));
+            if (!hit) throw new Error("No match");
+            return hit.id;
+          }),
+        ),
+        8000,
+        p.name,
+      ),
+    ),
   );
+  // A source that timed out may still carry the title, so look again soon rather than in hours.
+  const slow = found.some((r) => r.status === "rejected" && !(r.reason instanceof AggregateError));
+  if (slow) cacheLife("minutes");
+  else cacheLife("hours");
   return found.flatMap((r) => (r.status === "fulfilled" && r.value ? [r.value] : []));
 }
 
@@ -62,7 +69,7 @@ export const getMergedChapters = cache(async (id: string) => {
   const ids = [id, ...mirrors];
   const lists = await Promise.allSettled(
     // The series' own source gets longer; a slow mirror only loses its extra chapters.
-    ids.map((x, i) => withTimeout(getAllUploads(x), i === 0 ? 20000 : 9000, sourceOf(x))),
+    ids.map((x, i) => withTimeout(getAllUploads(x), i === 0 ? 20000 : 8000, sourceOf(x))),
   );
   const uploads: Chapter[] = [];
   const sources: SourceSummary[] = ids.map((x, i) => {
@@ -78,7 +85,7 @@ export const getMergedChapters = cache(async (id: string) => {
       latest: numbers.length ? String(Math.max(...numbers)) : null,
       primary: x === id,
       used: 0,
-      error: r.status === "rejected" ? (r.reason instanceof Error ? r.reason.message : "Unavailable") : undefined,
+      error: r.status === "rejected" ? errorText(r.reason, "Unavailable") : undefined,
     };
   });
   if (lists[0].status === "rejected" && !uploads.length) throw lists[0].reason;

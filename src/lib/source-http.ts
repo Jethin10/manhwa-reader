@@ -9,11 +9,19 @@ import { relayEnabled, relayUrl } from "./relay";
 export const BROWSER_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 
-// Hosts that just failed (unreachable, blocked, overloaded) skip the direct route for a while:
-// with a relay they go straight through it, without one they fail fast, so one dead source
-// doesn't make every page wait for its timeout again.
-const DOWN_FOR = 3 * 60_000;
-const down = new Map<string, { until: number; message: string }>();
+// What each host's last failure taught us, so later requests skip routes that won't work
+// instead of waiting for their timeout again:
+//  - "relay": the host refuses or stalls on this server's IP, but the relay gets through;
+//  - "blocked": both routes failed, so requests fail fast (or serve the stale copy) for a while.
+const RELAY_FOR = 60 * 60_000;
+const BLOCKED_FOR = 10 * 60_000;
+const routes = new Map<string, { via: "relay" | "blocked"; until: number; message: string }>();
+
+/** Hosts currently failing on every route, for UI that wants to hide or label them. */
+export function blockedHosts() {
+  const now = Date.now();
+  return [...routes].filter(([, r]) => r.via === "blocked" && r.until > now).map(([h]) => h);
+}
 
 // Last good copy of each page, served when every route fails, so a source that drops out
 // for a while keeps working for anything already visited.
@@ -90,23 +98,25 @@ async function attempt(url: string, opts: Opts, viaRelay: boolean) {
 export async function sourceFetch(url: string, opts: Opts = {}) {
   const host = new URL(url).hostname;
   const relay = relayEnabled();
-  const known = down.get(host);
-  const skipDirect = !!known && known.until > Date.now();
-  if (skipDirect && !relay) throw new Error(known.message);
+  const known = routes.get(host);
+  const route = known && known.until > Date.now() ? known : undefined;
 
-  let error: HostError | undefined;
-  for (const viaRelay of skipDirect ? [true] : relay ? [false, true] : [false]) {
+  let error: HostError | undefined = route?.via === "blocked" ? new HostError(route.message, true) : undefined;
+  const plan = route?.via === "blocked" ? [] : route?.via === "relay" && relay ? [true] : relay ? [false, true] : [false];
+  for (const viaRelay of plan) {
     try {
-      const res = await attempt(url, opts, viaRelay);
-      if (!viaRelay) down.delete(host);
+      // With a relay to fall back on, a stalled direct route gives up sooner.
+      const res = await attempt(url, { ...opts, timeout: opts.timeout ?? (!viaRelay && relay ? 8000 : undefined) }, viaRelay);
+      if (viaRelay && !route) routes.set(host, { via: "relay", until: Date.now() + RELAY_FOR, message: "" });
+      if (!viaRelay) routes.delete(host);
       void saveStale(url, res.clone());
       return res;
     } catch (e) {
       error = e as HostError;
       if (!error.sick) throw error;
-      if (!viaRelay) down.set(host, { until: Date.now() + DOWN_FOR, message: error.message });
     }
   }
+  if (plan.length) routes.set(host, { via: "blocked", until: Date.now() + BLOCKED_FOR, message: error!.message });
   try {
     return new Response(new Uint8Array(await readFile(staleFile(url))), {
       headers: { "X-Stale": "1" },
