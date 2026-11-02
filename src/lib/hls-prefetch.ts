@@ -1,4 +1,5 @@
 import type {
+  Fragment,
   FragmentLoaderContext,
   Loader,
   LoaderCallbacks,
@@ -6,7 +7,7 @@ import type {
   LoaderStats,
 } from "hls.js";
 
-type Levels = { details?: { startSN: number; fragments: { url: string }[] } }[];
+type Details = { startSN: number; fragments: { url: string }[] };
 
 function newStats(): LoaderStats {
   const timing = { start: 0, first: 0, end: 0, executeStart: 0, executeEnd: 0 };
@@ -33,9 +34,13 @@ class HttpError extends Error {
  * hls.js fetches one segment at a time, so on a long round trip (a far-away server) the
  * stream can't keep up at 1080p and 2x. This fragment loader also downloads the next few
  * segments in parallel while the current one plays, and hands them over the moment
- * hls.js asks. `ahead()` sets how many segments to fetch early.
+ * hls.js asks. `ahead()` sets how many segments to fetch early, and `detailsOf` finds the
+ * playlist a fragment belongs to (a video level or an audio track).
  */
-export function prefetchingLoader(levels: () => Levels, ahead: () => number) {
+export function prefetchingLoader(
+  detailsOf: (frag: Fragment) => Details | undefined,
+  ahead: () => number,
+) {
   const MAX_CACHED = 10;
   const cache = new Map<string, Promise<ArrayBuffer>>();
 
@@ -84,7 +89,7 @@ export function prefetchingLoader(levels: () => Levels, ahead: () => number) {
       // Byte-range segments are rare and can't share a cache entry; load them as asked.
       // (hls.js sets the range fields to 0 for whole-file segments.)
       const ranged = !!context.rangeEnd;
-      const details = levels()[context.frag.level]?.details;
+      const details = detailsOf(context.frag);
       const sn = context.frag.sn;
       if (!ranged && details && typeof sn === "number") {
         const at = sn - details.startSN;

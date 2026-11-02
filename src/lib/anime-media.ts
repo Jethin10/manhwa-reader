@@ -182,6 +182,7 @@ export async function getAnimeMedia(
     skip?: PlaybackMedia["skip"];
     src?: string;
     poster?: string;
+    default_audio?: string | null;
     subtitles?: {
       src: string;
       label?: string;
@@ -210,6 +211,8 @@ export async function getAnimeMedia(
     servers: deliveryServers,
     skip,
     poster: data.poster,
+    // Newer releases put every language in one stream; this names the one this version is for.
+    audio: data.default_audio ?? (language === "dub" ? "English" : "Japanese"),
     tracks: (data.subtitles ?? []).flatMap((t) => {
       try {
         return [
@@ -217,7 +220,8 @@ export async function getAnimeMedia(
             src: streamUrl(t.src),
             label: t.label ?? t.lang ?? "Subtitles",
             language: t.lang ?? "en",
-            default: !!t.default,
+            // The dub's own config turns English subtitles on, which reads as the sub version.
+            default: language === "sub" && !!t.default,
           },
         ];
       } catch {

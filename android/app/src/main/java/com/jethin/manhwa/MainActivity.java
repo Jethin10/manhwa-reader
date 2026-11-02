@@ -3,10 +3,12 @@ package com.jethin.manhwa;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Message;
 import android.view.KeyEvent;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.BridgeWebChromeClient;
 
 public class MainActivity extends BridgeActivity {
     // Set by the reader ("Volume keys turn pages"); read on the UI thread.
@@ -20,6 +22,25 @@ public class MainActivity extends BridgeActivity {
         webView.setDownloadListener((url, userAgent, disposition, mimeType, length) ->
             startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))));
         webView.addJavascriptInterface(new NativeBridge(), "ManhwaNative");
+
+        // Embedded video players show ads by opening new windows from a script. Without this,
+        // the WebView loads them in place of the app. Tapped links (an official-site link)
+        // still open in the system browser; script-opened windows are dropped.
+        webView.getSettings().setSupportMultipleWindows(true);
+        webView.getSettings().setJavaScriptCanOpenWindowsAutomatically(false);
+        webView.setWebChromeClient(new BridgeWebChromeClient(getBridge()) {
+            @Override
+            public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
+                WebView.HitTestResult hit = view.getHitTestResult();
+                int type = hit.getType();
+                String url = hit.getExtra();
+                if ((type == WebView.HitTestResult.SRC_ANCHOR_TYPE || type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE)
+                    && url != null && url.startsWith("http")) {
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                }
+                return false;
+            }
+        });
     }
 
     /** window.ManhwaNative in the web app (see src/components/Reader.tsx). */

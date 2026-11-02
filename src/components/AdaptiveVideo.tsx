@@ -44,6 +44,9 @@ export default function AdaptiveVideo({
     if (hls) Object.assign(hls.config, bufferPlan(prefs.buffer, prefs.speed));
   }, [prefs]);
   const [levels, setLevels] = useState<{ height: number; index: number }[]>([]);
+  // Streams that carry several dubs list each language as an audio track.
+  const [audioTracks, setAudioTracks] = useState<string[]>([]);
+  const [audioTrack, setAudioTrack] = useState(-1);
   const [quality, setQuality] = useState(-1),
     [height, setHeight] = useState(0),
     [buffer, setBuffer] = useState(0);
@@ -115,10 +118,14 @@ export default function AdaptiveVideo({
             ...bufferPlan(preferences.current.buffer, preferences.current.speed),
             // Fetch upcoming segments in parallel; more of them when playing fast.
             fLoader: prefetchingLoader(
-              () => instance?.levels ?? [],
+              (frag) =>
+                (frag.type === "audio" ? instance?.audioTracks : instance?.levels)?.[
+                  frag.level
+                ]?.details,
               () => (el.playbackRate > 1.25 ? 4 : 3),
             ),
             capLevelOnFPSDrop: true,
+            ...(media.audio ? { audioPreference: { name: media.audio } } : {}),
             backBufferLength: 30,
             startLevel: -1,
             // Start high; ABR still steps down if the connection can't keep up.
@@ -138,6 +145,18 @@ export default function AdaptiveVideo({
               hls.autoLevelCapping =
                 choices.filter((l) => l.height <= 720).at(-1)?.index ?? 0;
           });
+          hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (_, data) => {
+            const names = data.audioTracks.map((t) => t.name || t.lang || "Audio");
+            setAudioTracks(names);
+            // Start on the language this version is for (English for dub, Japanese for sub).
+            const wanted = media.audio?.toLowerCase();
+            const lang = wanted === "english" ? "en" : wanted === "japanese" ? "ja" : "";
+            const pick = data.audioTracks.findIndex(
+              (t) => (t.name ?? "").toLowerCase() === wanted || (!!lang && t.lang === lang),
+            );
+            if (pick >= 0 && hls.audioTrack !== pick) hls.audioTrack = pick;
+          });
+          hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (_, data) => setAudioTrack(data.id));
           hls.on(Hls.Events.LEVEL_SWITCHED, (_, data) =>
             setHeight(hls.levels[data.level]?.height ?? 0),
           );
@@ -214,7 +233,7 @@ export default function AdaptiveVideo({
       el.removeAttribute("src");
       el.load();
     };
-  }, [media.src, media.servers]);
+  }, [media.src, media.servers, media.audio]);
   useEffect(() => {
     const el = video.current;
     if (!el) return;
@@ -432,6 +451,23 @@ export default function AdaptiveVideo({
               </option>
             ))}
           </select>
+          {audioTracks.length > 1 && (
+            <select
+              aria-label="Audio language"
+              value={audioTrack}
+              onChange={(e) => {
+                const hls = engine.current;
+                if (hls) hls.audioTrack = Number(e.target.value);
+              }}
+              className="max-w-40 rounded-lg bg-black/70 p-2 outline-none focus:ring-2 focus:ring-accent"
+            >
+              {audioTracks.map((name, i) => (
+                <option key={i} value={i}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          )}
           <select
             aria-label="Playback mode"
             disabled={!levels.length}
