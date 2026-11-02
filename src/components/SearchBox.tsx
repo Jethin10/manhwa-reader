@@ -35,8 +35,10 @@ export function SearchBox({
   const label = section === "anime" ? "Search anime" : "Search manga";
   const term = q.trim();
   const key = `${section}|${term.toLowerCase()}`;
-  const items = found?.key === key ? found.items : (seen.get(key) ?? null);
-  const loading = term.length >= 2 && !items;
+  const fresh = found?.key === key ? found.items : (seen.get(key) ?? null);
+  const loading = term.length >= 2 && !fresh;
+  // While the next search runs, the last results stay up (dimmed) instead of blanking.
+  const items = fresh ?? found?.items ?? null;
   const showList = open && term.length >= 2;
 
   useEffect(() => {
@@ -152,7 +154,13 @@ export function SearchBox({
             large ? "inset-x-0" : "right-0 w-[380px] max-w-[calc(100vw-2rem)]"
           }`}
         >
-          <ul id={listId} role="listbox" aria-label="Suggestions">
+          <ul
+            id={listId}
+            role="listbox"
+            aria-label="Suggestions"
+            aria-busy={loading}
+            className={`transition-opacity ${loading ? "opacity-50" : ""}`}
+          >
             {items?.map((s, i) => (
               <li key={s.id} id={`${listId}-${i}`} role="option" aria-selected={i === active}>
                 <Link
@@ -186,7 +194,7 @@ export function SearchBox({
               Searching…
             </p>
           )}
-          {items && !items.length && (
+          {fresh && !fresh.length && (
             <p className="t-footnote px-3 py-3 text-secondary">No quick matches. Search every source below.</p>
           )}
           <button

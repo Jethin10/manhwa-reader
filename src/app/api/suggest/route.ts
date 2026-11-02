@@ -24,7 +24,7 @@ export async function GET(request: Request) {
 
 async function manga(q: string): Promise<Suggestion[]> {
   const pages = await Promise.allSettled(
-    QUICK.map((p) => withTimeout(providers[p].browse({ q, type: "all", limit: 8 }), 3500, p)),
+    QUICK.map((p) => withTimeout(providers[p].browse({ q, type: "all", limit: 8 }), 2500, p)),
   );
   const found: Suggestion[] = [];
   const seen: { title: string; altTitles: string[] }[] = [];
