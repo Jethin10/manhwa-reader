@@ -14,6 +14,7 @@ import {
   type CollectionItem,
 } from "@/lib/collection";
 import { removeWatch, useWatchHistory } from "./AnimeLibrary";
+import { useMovieHistory, removeMovieHistory } from "@/lib/movie-library";
 import { CollectionPicker } from "./CollectionPicker";
 import { Cover } from "./SeriesCard";
 import { DownloadGlyph } from "./ChapterList";
@@ -28,6 +29,7 @@ export function Library() {
   const bookmarks = useBookmarks(),
     history = useHistory(),
     watchHistory = useWatchHistory(),
+    movieHistory = useMovieHistory(),
     collection = useCollection(),
     downloads = Object.keys(useDownloads().saved),
     unread = useUnreadCounts();
@@ -50,7 +52,7 @@ export function Library() {
     .filter(
       (c) =>
         (media === "all" ||
-          (media === "anime"
+          (media === "movie" ? c.media === "movie" : media === "anime"
             ? c.media === "anime"
             : c.media === "series" &&
               (media === "manga"
@@ -69,14 +71,16 @@ export function Library() {
             : b.updatedAt - a.updatedAt,
     );
   function lastRead(c: CollectionItem) {
+    if (c.media === "movie") return movieHistory.find((h) => h.id === c.id)?.at ?? 0;
     return c.media === "anime"
       ? (watchHistory.find((w) => w.anime.id === c.id)?.at ?? 0)
       : (history.find((h) => h.id === c.id)?.at ?? 0);
   }
   function base(c: CollectionItem) {
-    return c.media === "anime" ? `/anime/${c.id}` : `/series/${c.id}`;
+    return c.media === "movie" ? `/movies/${c.id}` : c.media === "anime" ? `/anime/${c.id}` : `/series/${c.id}`;
   }
   function resume(c: CollectionItem) {
+    if (c.media === "movie") return `${base(c)}${c.status !== "completed" && movieHistory.some((h) => h.id === c.id) ? "?watch=1" : ""}`;
     const h = history.find((h) => h.id === c.id),
       w = watchHistory.find((h) => h.anime.id === c.id);
     return c.status === "completed"
@@ -104,7 +108,7 @@ export function Library() {
         <div className="flex flex-wrap gap-2">
           <Link
             href="/updates"
-            className="flex items-center gap-2 rounded-full bg-fill px-4 py-2.5 text-sm font-medium"
+            className="flex min-h-11 items-center gap-2 rounded-full bg-fill px-4 text-sm font-medium"
           >
             <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={2}>
               <path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0" strokeLinecap="round" strokeLinejoin="round" />
@@ -118,7 +122,7 @@ export function Library() {
           </Link>
           <Link
             href="/downloads"
-            className="flex items-center gap-2 rounded-full bg-fill px-4 py-2.5 text-sm font-medium"
+            className="flex min-h-11 items-center gap-2 rounded-full bg-fill px-4 text-sm font-medium"
           >
             <DownloadGlyph className="size-4" />
             Downloads
@@ -132,18 +136,19 @@ export function Library() {
             href="/settings"
             aria-label="Backup and preferences"
             title="Backup and preferences"
-            className="grid size-10 place-items-center rounded-full bg-fill"
+            className="grid size-11 place-items-center rounded-full bg-fill"
           >
             <GearIcon className="size-[18px]" />
           </Link>
         </div>
       </div>
-      <nav aria-label="Library media" className="mt-7 flex flex-wrap gap-2">
+      <nav aria-label="Library media" className="no-scrollbar -mx-5 mt-6 flex gap-2 overflow-x-auto px-5 py-1 sm:mx-0 sm:px-0">
         {[
           ["all", "All"],
           ["manga", "Manga"],
           ["manhwa", "Manhwa & comics"],
           ["anime", "Anime"],
+          ["movie", "Movies"],
         ].map(([id, label]) => (
           <button
             key={id}
@@ -152,13 +157,13 @@ export function Library() {
               setMedia(id);
               setLimit(60);
             }}
-            className={`rounded-full px-4 py-2 text-sm ${media === id ? "bg-white text-black" : "bg-fill text-secondary"}`}
+            className="chip"
           >
             {label}
           </button>
         ))}
       </nav>
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
         <input
           aria-label="Search library"
           value={q}
@@ -167,7 +172,7 @@ export function Library() {
             setLimit(60);
           }}
           placeholder="Search your titles"
-          className="min-w-0 rounded-xl bg-fill px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent"
+          className="field col-span-2 w-full px-4 sm:w-64"
         />
         <select
           aria-label="Library status filter"
@@ -176,7 +181,7 @@ export function Library() {
             setStatus(e.target.value);
             setLimit(60);
           }}
-          className="rounded-xl bg-fill px-3 py-2.5 text-sm"
+          className="field w-full sm:w-auto"
         >
           <option value="all">All statuses</option>
           {STATUSES.map((s) => (
@@ -189,7 +194,7 @@ export function Library() {
           aria-label="Library sort"
           value={sort}
           onChange={(e) => setSort(e.target.value)}
-          className="rounded-xl bg-fill px-3 py-2.5 text-sm"
+          className="field w-full sm:w-auto"
         >
           <option value="recent">Recently saved</option>
           <option value="read">Recently read</option>
@@ -198,7 +203,7 @@ export function Library() {
         </select>
         <button
           onClick={() => setView((v) => (v === "grid" ? "list" : "grid"))}
-          className="rounded-full bg-fill px-4 py-2 text-sm"
+          className="btn btn-gray col-span-2 font-medium sm:col-auto"
         >
           {view === "grid" ? "List view" : "Grid view"}
         </button>
@@ -259,7 +264,7 @@ export function Library() {
                     <CollectionPicker item={c} />
                     <button
                       onClick={() => remove(c)}
-                      className="text-xs text-secondary hover:text-red-300"
+                      className="t-footnote min-h-11 px-1 text-secondary hover:text-red-300"
                     >
                       Remove
                     </button>
@@ -274,14 +279,17 @@ export function Library() {
           <p className="text-sm text-secondary">
             {merged.size
               ? "No titles match these filters."
-              : "Save titles from a series or anime page to build your library."}
+              : "Save comics, anime or movies to build your library."}
           </p>
-          <div className="mt-5 flex justify-center gap-3 text-sm">
-            <Link href="/manga" className="text-accent">
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            <Link href="/manga" prefetch={false} className="btn btn-gray">
               Browse manga
             </Link>
-            <Link href="/anime" className="text-accent">
+            <Link href="/anime" prefetch={false} className="btn btn-gray">
               Browse anime
+            </Link>
+            <Link href="/movies" prefetch={false} className="btn btn-gray">
+              Browse movies
             </Link>
           </div>
         </div>
@@ -289,13 +297,17 @@ export function Library() {
       {limit < entries.length && (
         <button
           onClick={() => setLimit((n) => n + 60)}
-          className="mt-7 rounded-full bg-fill px-6 py-3 text-sm"
+          className="btn btn-gray mt-7"
         >
           Load more titles
         </button>
       )}
+      {(merged.size > 0 ||
+        history.length > 0 ||
+        watchHistory.length > 0 ||
+        movieHistory.length > 0) && (
       <section className="mt-12">
-        <h2 className="t-title2">Recent Activity</h2>
+        <h2 className="t-title2">Recent activity</h2>
         <div className="mt-4 overflow-hidden rounded-2xl bg-card">
           {history.slice(0, 10).map((h) => (
             <div
@@ -315,7 +327,7 @@ export function Library() {
               <button
                 aria-label={`Remove ${h.title} from reading history`}
                 onClick={() => removeHistory(h.id)}
-                className="text-xs text-secondary"
+                className="t-footnote min-h-11 px-1 text-secondary"
               >
                 Remove
               </button>
@@ -338,19 +350,21 @@ export function Library() {
               <button
                 aria-label={`Remove ${w.anime.title} from watching history`}
                 onClick={() => removeWatch(w.anime.id)}
-                className="text-xs text-secondary"
+                className="t-footnote min-h-11 px-1 text-secondary"
               >
                 Remove
               </button>
             </div>
           ))}
-          {!history.length && !watchHistory.length && (
+          {movieHistory.slice(0, 10).map((m) => <div key={m.id} className="flex items-center gap-3 border-b border-hairline p-4"><Link href={`/movies/${m.id}?watch=1`} className="min-w-0 flex-1"><p className="truncate text-sm">{m.title}</p><p className="mt-1 text-xs text-secondary">Movie · {m.completed ? "Finished" : `${Math.floor(m.time / 60)} min watched`}</p></Link><button aria-label={`Remove ${m.title} from movie history`} onClick={() => removeMovieHistory(m.id)} className="t-footnote min-h-11 px-1 text-secondary">Remove</button></div>)}
+          {!history.length && !watchHistory.length && !movieHistory.length && (
             <p className="p-8 text-sm text-secondary">
               Your reading and watching progress will appear here.
             </p>
           )}
         </div>
       </section>
+      )}
     </div>
   );
 }

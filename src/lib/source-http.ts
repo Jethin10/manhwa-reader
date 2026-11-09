@@ -1,6 +1,13 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { load } from "cheerio";
@@ -15,12 +22,17 @@ export const BROWSER_UA =
 //  - "blocked": both routes failed, so requests fail fast (or serve the stale copy) for a while.
 const RELAY_FOR = 60 * 60_000;
 const BLOCKED_FOR = 10 * 60_000;
-const routes = new Map<string, { via: "relay" | "blocked"; until: number; message: string }>();
+const routes = new Map<
+  string,
+  { via: "relay" | "blocked"; until: number; message: string }
+>();
 
 /** Hosts currently failing on every route, for UI that wants to hide or label them. */
 export function blockedHosts() {
   const now = Date.now();
-  return [...routes].filter(([, r]) => r.via === "blocked" && r.until > now).map(([h]) => h);
+  return [...routes]
+    .filter(([, r]) => r.via === "blocked" && r.until > now)
+    .map(([h]) => h);
 }
 
 // Last good copy of each page, served when every route fails, so a source that drops out
@@ -47,19 +59,31 @@ async function pruneStale() {
   const names = await readdir(STALE_DIR);
   if (names.length <= STALE_MAX_FILES) return;
   const files = await Promise.all(
-    names.map(async (n) => ({ n, t: (await stat(join(STALE_DIR, n))).mtimeMs })),
+    names.map(async (n) => ({
+      n,
+      t: (await stat(join(STALE_DIR, n))).mtimeMs,
+    })),
   );
   files.sort((a, b) => a.t - b.t);
   await Promise.all(
-    files.slice(0, files.length - STALE_MAX_FILES).map((f) => rm(join(STALE_DIR, f.n), { force: true })),
+    files
+      .slice(0, files.length - STALE_MAX_FILES)
+      .map((f) => rm(join(STALE_DIR, f.n), { force: true })),
   );
 }
 
-type Opts = { referer?: string; headers?: Record<string, string>; timeout?: number };
+type Opts = {
+  referer?: string;
+  headers?: Record<string, string>;
+  timeout?: number;
+};
 
 class HostError extends Error {
   // Whether the host itself looks sick (worth the relay or a pause), versus a plain miss like 404.
-  constructor(message: string, readonly sick: boolean) {
+  constructor(
+    message: string,
+    readonly sick: boolean,
+  ) {
     super(message);
   }
 }
@@ -69,7 +93,13 @@ async function attempt(url: string, opts: Opts, viaRelay: boolean) {
   let res: Response;
   try {
     res = await fetch(
-      viaRelay ? relayUrl(url, { referer: opts.referer, headers: opts.headers, ttl: 300 }) : url,
+      viaRelay
+        ? relayUrl(url, {
+            referer: opts.referer,
+            headers: opts.headers,
+            ttl: 300,
+          })
+        : url,
       {
         headers: viaRelay
           ? {}
@@ -82,10 +112,14 @@ async function attempt(url: string, opts: Opts, viaRelay: boolean) {
       },
     );
   } catch {
-    throw new HostError(`${host} could not be reached. Try again or choose another source.`, true);
+    throw new HostError(
+      `${host} could not be reached. Try again or choose another source.`,
+      true,
+    );
   }
   if (!res.ok) {
     const status = Number(res.headers.get("X-Upstream-Status")) || res.status;
+    await res.body?.cancel().catch(() => {});
     throw new HostError(
       `${host} returned ${status}. Try again or choose another source.`,
       // A 404 is a missing title, not a sick host.
@@ -101,13 +135,33 @@ export async function sourceFetch(url: string, opts: Opts = {}) {
   const known = routes.get(host);
   const route = known && known.until > Date.now() ? known : undefined;
 
-  let error: HostError | undefined = route?.via === "blocked" ? new HostError(route.message, true) : undefined;
-  const plan = route?.via === "blocked" ? [] : route?.via === "relay" && relay ? [true] : relay ? [false, true] : [false];
+  let error: HostError | undefined =
+    route?.via === "blocked" ? new HostError(route.message, true) : undefined;
+  const plan =
+    route?.via === "blocked"
+      ? []
+      : route?.via === "relay" && relay
+        ? [true]
+        : relay
+          ? [false, true]
+          : [false];
   for (const viaRelay of plan) {
     try {
       // With a relay to fall back on, a stalled direct route gives up sooner.
-      const res = await attempt(url, { ...opts, timeout: opts.timeout ?? (!viaRelay && relay ? 8000 : undefined) }, viaRelay);
-      if (viaRelay && !route) routes.set(host, { via: "relay", until: Date.now() + RELAY_FOR, message: "" });
+      const res = await attempt(
+        url,
+        {
+          ...opts,
+          timeout: opts.timeout ?? (!viaRelay && relay ? 8000 : undefined),
+        },
+        viaRelay,
+      );
+      if (viaRelay && !route)
+        routes.set(host, {
+          via: "relay",
+          until: Date.now() + RELAY_FOR,
+          message: "",
+        });
       if (!viaRelay) routes.delete(host);
       void saveStale(url, res.clone());
       return res;
@@ -116,7 +170,12 @@ export async function sourceFetch(url: string, opts: Opts = {}) {
       if (!error.sick) throw error;
     }
   }
-  if (plan.length) routes.set(host, { via: "blocked", until: Date.now() + BLOCKED_FOR, message: error!.message });
+  if (plan.length)
+    routes.set(host, {
+      via: "blocked",
+      until: Date.now() + BLOCKED_FOR,
+      message: error!.message,
+    });
   try {
     return new Response(new Uint8Array(await readFile(staleFile(url))), {
       headers: { "X-Stale": "1" },

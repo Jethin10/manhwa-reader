@@ -1,6 +1,6 @@
 // CDNs that serve images to any page, with or without a Referer. These load straight from the
 // CDN, which is faster than the proxy and costs the server nothing.
-const DIRECT = [/^cdn\.asurascans\.com$/, /^(?:i\d+\.)?mangakatana\.com$/];
+const DIRECT = [/^cdn\.asurascans\.com$/, /^(?:i\d+\.)?mangakatana\.com$/, /^images\.metahub\.space$/, /^m\.media-amazon\.com$/];
 
 function host(url: string) {
   try {

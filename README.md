@@ -1,6 +1,6 @@
 # Manhwa
 
-A manga, manhwa and anime app built with Next.js. It reads from five sources, opens each chapter from the best available copy, and installs on phones as a PWA or an Android app.
+A manga, manhwa, anime and movie app built with Next.js. It reads comics from five sources, opens each chapter from the best available copy, and installs on phones as a PWA or an Android app.
 
 **Open it:** https://manhwa-reader-51fe.onrender.com
 
@@ -25,6 +25,12 @@ npm start -- -p 3123
 ```
 
 For development, run `npm run dev -- -p 3123`.
+
+## Movies
+
+Open `/movies` for movie discovery, title search, Telugu and Indian picks. Movie pages offer ten independently hosted players with manual switching and automatic fallback on reported errors or observed stalls. Provider preferences, watchlists and supported playback progress are saved on the device and included in backups.
+
+Movie metadata is searched across Cinemeta and IMDb, then matched to players by IMDb/TMDB ID. A metadata listing does not guarantee playback availability. Quality preferences apply where supported; the app cannot measure every embedded provider's resolution or promise the highest-quality copy across all services. Embedded players do not expose downloadable files, so movie offline downloads are unavailable. See [movie implementation notes](docs/movies.md) and the [provider research](docs/movie-provider-research.md).
 
 ## Reading
 
@@ -99,6 +105,8 @@ npm run mobile:apk
 Building the APK needs JDK 21 and the Android SDK. The APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
 
 Releases are automatic. When a change to `android/`, `mobile/`, `capacitor.config.ts` or `package.json` reaches `main`, `.github/workflows/android.yml` builds a signed APK, numbers it `1.0.<run>`, and publishes it as the latest release. You can also start it by hand from the Actions tab. The release key lives in the repository secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS`. Every release must be signed with the same key, or it won't install over the previous one. Use `npm run mobile:open` to open the project in Android Studio. `npm run icons` regenerates the web and Android icons from `scripts/icon.svg`.
+
+Manual workflow runs save a signed `manhwa-apk` artifact with a SHA-256 checksum. Leave **Publish this APK as the latest release** off to build a review copy without announcing an update; enable it only when publishing a release. The workflow verifies the APK signature before saving it.
 
 ## Host it for free
 

@@ -1,5 +1,6 @@
 "use client";
 import { useSyncExternalStore } from "react";
+import { toast } from "./toast";
 export const STATUSES = [
   { value: "planned", label: "Plan to start" },
   { value: "in_progress", label: "In progress" },
@@ -10,7 +11,7 @@ export const STATUSES = [
 export type CollectionStatus = (typeof STATUSES)[number]["value"];
 export type CollectionItem = {
   id: string;
-  media: "anime" | "series";
+  media: "anime" | "series" | "movie";
   title: string;
   cover: string | null;
   type: string;
@@ -33,6 +34,7 @@ export function getCollection(): CollectionItem[] {
   return memo ?? empty;
 }
 function subscribe(cb: () => void) {
+  memo = undefined;
   const fn = () => {
     memo = undefined;
     cb();
@@ -47,6 +49,9 @@ function subscribe(cb: () => void) {
 export function useCollection() {
   return useSyncExternalStore(subscribe, getCollection, () => empty);
 }
+export function resetCollectionCache() {
+  memo = undefined;
+}
 export function setCollection(
   item: Omit<CollectionItem, "status" | "updatedAt">,
   status: CollectionStatus | null,
@@ -54,14 +59,21 @@ export function setCollection(
   const list = getCollection().filter(
     (x) => x.id !== item.id || x.media !== item.media,
   );
-  localStorage.setItem(
-    COLLECTION_KEY,
-    JSON.stringify(
-      status
-        ? [{ ...item, status, updatedAt: Date.now() }, ...list].slice(0, 500)
-        : list,
-    ),
-  );
+  try {
+    localStorage.setItem(
+      COLLECTION_KEY,
+      JSON.stringify(
+        status
+          ? [{ ...item, status, updatedAt: Date.now() }, ...list].slice(0, 500)
+          : list,
+      ),
+    );
+  } catch {
+    toast("Couldn't save your library. Check your device storage.", {
+      tone: "error",
+    });
+    return;
+  }
   memo = undefined;
   window.dispatchEvent(new Event(EVENT));
 }

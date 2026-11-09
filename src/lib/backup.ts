@@ -1,7 +1,12 @@
 "use client";
 import { normalizeReader } from "./library";
 import { normalizePreferences } from "./preferences";
-import { STATUSES } from "./collection";
+import { STATUSES, resetCollectionCache } from "./collection";
+import {
+  normalizeMovieHistory,
+  normalizeMoviePreferences,
+  resetMovieStorageCache,
+} from "./movie-library";
 const KEYS = [
   "mr:bookmarks",
   "mr:history",
@@ -14,6 +19,8 @@ const KEYS = [
   "mr:playback-mode",
   "mr:read",
   "mr:reader-mode",
+  "mr:movie-history",
+  "mr:movie-preferences",
 ];
 const ID = /^[a-zA-Z0-9~._-]{1,240}$/;
 function record(v: unknown): Record<string, unknown> {
@@ -59,6 +66,16 @@ function series(v: unknown) {
   };
 }
 function clean(key: string, value: unknown): unknown {
+  if (key === "mr:movie-preferences")
+    return normalizeMoviePreferences(record(value));
+  if (key === "mr:movie-history") {
+    if (!Array.isArray(value) || value.length > 100)
+      throw new Error("The backup contains an invalid movie history.");
+    const normalized = normalizeMovieHistory(value);
+    if (normalized.length !== value.length)
+      throw new Error("The backup contains an invalid movie ID.");
+    return normalized;
+  }
   if (key === "mr:reader") return normalizeReader(value);
   if (key === "mr:preferences") return normalizePreferences(value);
   if (key === "mr:playback-mode") return value === "smooth" ? "smooth" : "auto";
@@ -83,9 +100,14 @@ function clean(key: string, value: unknown): unknown {
       Object.entries(record(value))
         .slice(-500)
         .filter(([, v]) =>
-          ["auto", "webtoon", "webtoon-gaps", "ltr", "rtl", "vertical"].includes(
-            String(v),
-          ),
+          [
+            "auto",
+            "webtoon",
+            "webtoon-gaps",
+            "ltr",
+            "rtl",
+            "vertical",
+          ].includes(String(v)),
         )
         .map(([k, v]) => [id(k), v]),
     );
@@ -115,7 +137,7 @@ function clean(key: string, value: unknown): unknown {
       const r = record(v);
       if (
         !STATUSES.some((s) => s.value === r.status) ||
-        !["series", "anime"].includes(String(r.media))
+        !["series", "anime", "movie"].includes(String(r.media))
       )
         throw new Error("The backup contains an invalid library status.");
       return {
@@ -198,6 +220,7 @@ export function importBackup(json: string) {
         "mr:history",
         "mr:watch-history",
         "mr:collection",
+        "mr:movie-history",
       ].includes(key)
     ) {
       let old: unknown[] = [];
@@ -211,11 +234,17 @@ export function importBackup(json: string) {
           ? record(r.anime).id
           : `${r.media ?? ""}:${r.id}`;
       };
-      next = [
+      const merged = [
         ...new Map(
           [...old, ...(next as unknown[])].map((v) => [identity(v), v]),
         ).values(),
-      ].slice(-500);
+      ];
+      next =
+        key === "mr:movie-history"
+          ? merged
+              .sort((a, b) => Number(record(b).at) - Number(record(a).at))
+              .slice(0, 100)
+          : merged.slice(-500);
     }
     if (oldRaw && ["mr:positions", "mr:reader-series"].includes(key)) {
       try {
@@ -248,6 +277,8 @@ export function importBackup(json: string) {
       "The device could not save the backup. Free some browser storage and retry.",
     );
   }
+  resetMovieStorageCache();
+  resetCollectionCache();
   window.dispatchEvent(new Event("storage"));
   return prepared.length;
 }
