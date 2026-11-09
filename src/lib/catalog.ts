@@ -3,7 +3,13 @@ import * as asura from "./asura";
 import * as mangakatana from "./mangakatana";
 import * as weebcentral from "./weebcentral";
 import * as mangapill from "./mangapill";
-import { PROVIDERS, providerOf, qualityOf, type ProviderId, type SourceId } from "./sources";
+import {
+  PROVIDERS,
+  providerOf,
+  qualityOf,
+  type ProviderId,
+  type SourceId,
+} from "./sources";
 import { sameTitle } from "./titles";
 import { errorText } from "./format";
 export type {
@@ -18,13 +24,20 @@ export type {
 } from "./mangadex";
 export { getTags, getLatestUpdates } from "./mangadex";
 
-type Page = { series: dex.Series[]; total: number; pages: number; page: number };
+type Page = {
+  series: dex.Series[];
+  total: number;
+  pages: number;
+  page: number;
+};
 type Provider = {
   browse(opts: dex.BrowseOptions): Promise<Page>;
   series(id: string): Promise<dex.Series>;
   chapters(id: string): Promise<dex.Chapter[]>;
   uploads?(id: string): Promise<dex.Chapter[]>;
-  chapter(id: string): Promise<{ mangaId: string | null; chapter: dex.Chapter }>;
+  chapter(
+    id: string,
+  ): Promise<{ mangaId: string | null; chapter: dex.Chapter }>;
   pages(id: string): Promise<dex.PageImage[]>;
 };
 
@@ -71,30 +84,57 @@ const nameOf = (p: ProviderId) => PROVIDERS.find((x) => x.id === p)!.name;
 
 /** Rejects after `ms` so one slow source cannot hold up a page that merges several. */
 export function withTimeout<T>(promise: Promise<T>, ms: number, label: string) {
+  let timer: ReturnType<typeof setTimeout>;
   return Promise.race([
     promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} took too long to respond.`)), ms),
-    ),
-  ]);
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`${label} took too long to respond.`)),
+        ms,
+      );
+    }),
+  ]).finally(() => clearTimeout(timer));
 }
 
 /**
  * Settles like Promise.allSettled, but stops waiting after `soft` ms once any job has
  * succeeded, and after `hard` ms regardless. Jobs still running count as timed out.
  */
-function settleSoon<T>(jobs: Promise<T>[], soft: number, hard: number, labels: string[]) {
-  const out: (PromiseSettledResult<T> | undefined)[] = jobs.map(() => undefined);
+function settleSoon<T>(
+  jobs: Promise<T>[],
+  soft: number,
+  hard: number,
+  labels: string[],
+) {
+  const out: (PromiseSettledResult<T> | undefined)[] = jobs.map(
+    () => undefined,
+  );
   return new Promise<PromiseSettledResult<T>[]>((resolve) => {
     let late = false;
-    const finish = () =>
+    let finished = false;
+    const softTimer = setTimeout(() => ((late = true), check()), soft);
+    const hardTimer = setTimeout(() => finish(), hard);
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(softTimer);
+      clearTimeout(hardTimer);
       resolve(
         out.map(
-          (r, i) => r ?? { status: "rejected", reason: new Error(`${labels[i]} took too long to respond.`) },
+          (r, i) =>
+            r ?? {
+              status: "rejected",
+              reason: new Error(`${labels[i]} took too long to respond.`),
+            },
         ),
       );
+    };
     const check = () => {
-      if (out.every(Boolean) || (late && out.some((r) => r?.status === "fulfilled"))) finish();
+      if (
+        out.every(Boolean) ||
+        (late && out.some((r) => r?.status === "fulfilled"))
+      )
+        finish();
     };
     jobs.forEach((job, i) =>
       job.then(
@@ -102,19 +142,26 @@ function settleSoon<T>(jobs: Promise<T>[], soft: number, hard: number, labels: s
         (reason) => ((out[i] = { status: "rejected", reason }), check()),
       ),
     );
-    setTimeout(() => ((late = true), check()), soft);
-    setTimeout(finish, hard);
+    check();
   });
 }
 
-export async function browseSeries(opts: dex.BrowseOptions & { source?: SourceId } = {}) {
+export async function browseSeries(
+  opts: dex.BrowseOptions & { source?: SourceId } = {},
+) {
   const source = opts.source ?? "all";
   const all = source === "all";
   // MangaPill has no popularity sort, so it only joins all-source results for searches.
   const ids: ProviderId[] = all
-    ? (["asura", "mangadex", "weebcentral", "mangakatana", "mangapill"] as const).filter(
-        (p) => p !== "mangapill" || !!opts.q,
-      )
+    ? (
+        [
+          "asura",
+          "mangadex",
+          "weebcentral",
+          "mangakatana",
+          "mangapill",
+        ] as const
+      ).filter((p) => p !== "mangapill" || !!opts.q)
     : [source];
   const jobs = ids.map((p) => providers[p].browse(opts));
   // Mixed results show whatever arrived within 4 seconds, but never an empty page while a
@@ -122,12 +169,17 @@ export async function browseSeries(opts: dex.BrowseOptions & { source?: SourceId
   // next visit includes it.
   const results = all
     ? await settleSoon(jobs, 4000, 20000, ids.map(nameOf))
-    : await Promise.allSettled(jobs);
+    : await Promise.allSettled(
+        jobs.map((job, i) => withTimeout(job, 20000, nameOf(ids[i]))),
+      );
   const warnings: string[] = [];
   const good = results.flatMap((r, i) => {
     if (r.status === "fulfilled") return [r.value];
     warnings.push(
-      errorText(r.reason, `${nameOf(ids[i])} isn't responding right now. Try All sources.`),
+      errorText(
+        r.reason,
+        `${nameOf(ids[i])} isn't responding right now. Try All sources.`,
+      ),
     );
     return [];
   });
@@ -161,7 +213,9 @@ export const getChapter = (id: string) => of(id).chapter(id);
 export const getPages = (id: string) => of(id).pages(id);
 
 /** Ratings and follows for a set of series. Accepts series that already carry their stats. */
-export async function getStats(items: (string | Pick<dex.Series, "id" | "stats">)[]) {
+export async function getStats(
+  items: (string | Pick<dex.Series, "id" | "stats">)[],
+) {
   const stats: Record<string, dex.Stats> = {};
   const missing: string[] = [];
   for (const item of items) {
@@ -179,7 +233,10 @@ export async function getStats(items: (string | Pick<dex.Series, "id" | "stats">
         .filter((id) => providerOf(id) === "asura")
         .map(async (id) => {
           const s = await asura.asuraDetail(id);
-          stats[id] = { rating: s.rating ?? null, follows: s.bookmark_count ?? 0 };
+          stats[id] = {
+            rating: s.rating ?? null,
+            follows: s.bookmark_count ?? 0,
+          };
         }),
     ]),
     2500,

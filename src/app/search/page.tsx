@@ -19,6 +19,7 @@ const CATEGORIES = [
     tint: "from-[#ff9f0a] to-[#9c4a00]",
   },
   { label: "Anime", href: "/anime", tint: "from-[#bf5af2] to-[#5b1b80]" },
+  { label: "Movies", href: "/movies", tint: "from-[#0a84ff] to-[#16456c]" },
   {
     label: "New Releases",
     href: "/series?order=latestUploadedChapter&type=all",

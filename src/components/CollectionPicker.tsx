@@ -22,7 +22,7 @@ export function CollectionPicker({
     <span className="relative inline-flex">
     <select
       aria-label={
-        item.media === "anime" ? "Watchlist status" : "Reading status"
+        item.media !== "series" ? "Watchlist status" : "Reading status"
       }
       value={saved?.status ?? (legacy ? "planned" : "")}
       onChange={(e) => {
@@ -37,7 +37,7 @@ export function CollectionPicker({
       <option value="">
         {saved || legacy
           ? "Remove from list"
-          : item.media === "anime"
+          : item.media !== "series"
             ? "Add to watchlist"
             : "Reading status"}
       </option>

@@ -13,11 +13,50 @@ import {
   PlayRectIcon,
 } from "./Icons";
 
+const inLibrary = (p: string) =>
+  p.startsWith("/bookmarks") ||
+  p.startsWith("/downloads") ||
+  p.startsWith("/updates");
+
+function FilmIcon({
+  className,
+  filled,
+}: {
+  className?: string;
+  filled?: boolean;
+}) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      aria-hidden
+      className={className}
+    >
+      <rect
+        x="3.5"
+        y="4"
+        width="17"
+        height="16"
+        rx="3"
+        fill={filled ? "currentColor" : "none"}
+      />
+      <path
+        d="M8 4v16M16 4v16M3.5 9.3H8M3.5 14.7H8M16 9.3h4.5M16 14.7h4.5"
+        stroke={filled ? "#000" : "currentColor"}
+      />
+    </svg>
+  );
+}
+
 const NAV = [
   { href: "/", label: "Home" },
   { href: "/series", label: "Manhwa" },
   { href: "/manga", label: "Manga" },
   { href: "/anime", label: "Anime" },
+  { href: "/movies", label: "Movies" },
   { href: "/bookmarks", label: "Library" },
 ];
 
@@ -47,25 +86,38 @@ const TABS = [
     match: (p: string) => p.startsWith("/anime"),
   },
   {
+    href: "/movies",
+    label: "Movies",
+    Icon: FilmIcon,
+    match: (p: string) => p.startsWith("/movies"),
+  },
+  {
     href: "/bookmarks",
     label: "Library",
     Icon: BooksIcon,
-    match: (p: string) => p.startsWith("/bookmarks"),
+    match: inLibrary,
   },
 ];
 
 const active = (path: string, href: string) =>
-  href === "/" ? path === "/" : path === href || path.startsWith(`${href}/`);
+  href === "/"
+    ? path === "/"
+    : href === "/bookmarks"
+      ? inLibrary(path)
+      : path === href || path.startsWith(`${href}/`);
 
 /** Reads the URL for active states; wrap in Suspense and fall back to `<Chrome path="" />`. */
 export function Header() {
   const path = usePathname();
   const params = useSearchParams();
   const section =
-    path.startsWith("/anime") ||
-    (path === "/search" && params.get("section") === "anime")
-      ? "anime"
-      : "manga";
+    path.startsWith("/movies") ||
+    (path === "/search" && params.get("section") === "movies")
+      ? "movies"
+      : path.startsWith("/anime") ||
+          (path === "/search" && params.get("section") === "anime")
+        ? "anime"
+        : "manga";
   return <Chrome path={path} section={section} />;
 }
 
@@ -82,7 +134,7 @@ export function Chrome({
         <div className="gutter mx-auto flex h-[52px] max-w-[1440px] items-center gap-6">
           <Link
             href="/"
-            className="flex items-center gap-2.5"
+            className="flex min-h-11 items-center gap-2.5"
             aria-label="Manhwa home"
           >
             <Logo />
@@ -96,8 +148,9 @@ export function Chrome({
               <Link
                 key={n.href}
                 href={n.href}
+                prefetch={n.href === "/bookmarks" ? null : false}
                 aria-current={active(path, n.href) ? "page" : undefined}
-                className={`t-footnote rounded-full px-3.5 py-1.5 font-medium transition-colors ${
+                className={`hit t-footnote rounded-full px-3.5 py-1.5 font-medium transition-colors ${
                   active(path, n.href)
                     ? "bg-fill text-label"
                     : "text-secondary hover:text-label"
@@ -110,6 +163,7 @@ export function Chrome({
           <div className="ml-auto flex items-center gap-2">
             <div className="hidden w-[260px] lg:block">
               <SearchBox
+                key={section}
                 section={section}
                 mangaOnly={path.startsWith("/manga")}
               />
@@ -118,7 +172,7 @@ export function Chrome({
               href="/settings"
               aria-label="Preferences"
               aria-current={path.startsWith("/settings") ? "page" : undefined}
-              className={`grid size-9 place-items-center rounded-full transition-colors hover:bg-fill ${
+              className={`grid size-11 place-items-center rounded-full transition-colors hover:bg-fill ${
                 path.startsWith("/settings") ? "text-accent" : "text-secondary"
               }`}
             >
@@ -133,7 +187,7 @@ export function Chrome({
         className="site-chrome glass-bar fixed inset-x-0 bottom-0 z-40 shadow-[inset_0_0.5px_0_var(--color-hairline)] lg:hidden"
         style={{ paddingBottom: "var(--safe-bottom)" }}
       >
-        <ul className="mx-auto grid h-14 max-w-xl grid-cols-5">
+        <ul className="mx-auto grid h-14 max-w-xl grid-cols-6">
           {TABS.map(({ href, label, Icon, match }) => {
             const on = match(path);
             return (
@@ -142,9 +196,12 @@ export function Chrome({
                   href={
                     href === "/search" ? `/search?section=${section}` : href
                   }
+                  prefetch={
+                    href === "/bookmarks" || href === "/search" ? null : false
+                  }
                   aria-current={on ? "page" : undefined}
                   className={`flex h-full flex-col items-center justify-center gap-[3px] transition-colors ${
-                    on ? "text-accent" : "text-tertiary active:text-secondary"
+                    on ? "text-accent" : "text-secondary active:text-label"
                   }`}
                 >
                   <span className="relative">

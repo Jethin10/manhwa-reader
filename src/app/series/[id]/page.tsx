@@ -15,11 +15,16 @@ import { Synopsis } from "@/components/Synopsis";
 import { CheckIcon, SparkleIcon, StarIcon } from "@/components/Icons";
 import type { SavedSeries } from "@/lib/library";
 
-export async function generateMetadata({ params }: PageProps<"/series/[id]">): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: PageProps<"/series/[id]">): Promise<Metadata> {
   const { id } = await params;
   const s = await getSeries(id).catch(() => null);
   if (!s) return { title: "Series unavailable" };
-  return { title: s.title, description: cleanDescription(s.description).slice(0, 160) };
+  return {
+    title: s.title,
+    description: cleanDescription(s.description).slice(0, 160),
+  };
 }
 
 export default function SeriesPage({ params }: PageProps<"/series/[id]">) {
@@ -30,24 +35,40 @@ export default function SeriesPage({ params }: PageProps<"/series/[id]">) {
   );
 }
 
-async function SeriesContent({ params }: { params: PageProps<"/series/[id]">["params"] }) {
+async function SeriesContent({
+  params,
+}: {
+  params: PageProps<"/series/[id]">["params"];
+}) {
   try {
     return await LoadSeries({ params });
   } catch (e) {
-    return <SourceIssue message={errorText(e, "The source could not load this series. Try again in a moment.")} />;
+    return (
+      <SourceIssue
+        message={errorText(
+          e,
+          "The source could not load this series. Try again in a moment.",
+        )}
+      />
+    );
   }
 }
 
-async function LoadSeries({ params }: { params: PageProps<"/series/[id]">["params"] }) {
+async function LoadSeries({
+  params,
+}: {
+  params: PageProps<"/series/[id]">["params"];
+}) {
   const { id } = await params;
-  const [s, primary, stats] = await Promise.all([
-    getSeries(id),
-    // Other sources can still supply chapters when this one is down.
-    getChapters(id).catch(() => [] as Chapter[]),
-    getStats([id]),
-  ]);
-  const st = stats[id];
-  const genres = s.tags.filter((t) => t.group === "genre" || t.group === "theme");
+  // Chapters and decorative statistics stream independently of the title and synopsis.
+  const primary = getChapters(id).catch(() => [] as Chapter[]);
+  const stats: Promise<Awaited<ReturnType<typeof getStats>>> = getStats([
+    id,
+  ]).catch(() => ({}));
+  const s = await getSeries(id);
+  const genres = s.tags.filter(
+    (t) => t.group === "genre" || t.group === "theme",
+  );
   const saved = { id: s.id, title: s.title, cover: s.cover, type: s.type };
   const creators = [...new Set([...s.authors, ...s.artists])];
 
@@ -87,9 +108,25 @@ async function LoadSeries({ params }: { params: PageProps<"/series/[id]">["param
             <h1 className="text-balance mt-1.5 font-[family-name:var(--font-display)] text-[28px] leading-[1.1] font-bold tracking-[-0.022em] sm:text-[40px] lg:text-[48px]">
               {s.title}
             </h1>
-            {creators.length > 0 && <p className="t-callout mt-2 text-secondary">{creators.join(", ")}</p>}
+            {creators.length > 0 && (
+              <p className="t-callout mt-2 text-secondary">
+                {creators.join(", ")}
+              </p>
+            )}
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center md:justify-start">
-              <Suspense fallback={<PrimaryRead id={id} chapters={primary} />}>
+              <Suspense
+                fallback={
+                  <Suspense
+                    fallback={
+                      <span className="t-footnote text-secondary">
+                        Finding chapters…
+                      </span>
+                    }
+                  >
+                    <PrimaryReadReady id={id} chapters={primary} />
+                  </Suspense>
+                }
+              >
                 <MergedRead id={id} />
               </Suspense>
               <div className="flex items-center justify-center gap-3">
@@ -103,19 +140,28 @@ async function LoadSeries({ params }: { params: PageProps<"/series/[id]">["param
         {/* Facts strip, App Store style: scrolls sideways on narrow screens */}
         <dl className="no-scrollbar -mx-5 mt-9 flex overflow-x-auto px-5 sm:mx-0 sm:px-0 md:mt-12">
           <Fact label="Rating">
-            <span className="flex items-center justify-center gap-1">
-              {st?.rating ? st.rating.toFixed(1) : "—"}
-              {st?.rating ? <StarIcon className="size-3.5 text-warning" /> : null}
-            </span>
+            <Suspense fallback="—">
+              <SeriesStat stats={stats} id={id} />
+            </Suspense>
           </Fact>
           <Fact label="Chapters">
-            <Suspense fallback={primary.length || "—"}>
+            <Suspense
+              fallback={
+                <Suspense fallback="…">
+                  <PrimaryCountReady chapters={primary} />
+                </Suspense>
+              }
+            >
               <MergedCount id={id} />
             </Suspense>
           </Fact>
           <Fact label="Status">{cap(s.status)}</Fact>
           <Fact label="Released">{s.year ?? "—"}</Fact>
-          <Fact label="Followers">{st?.follows ? compact(st.follows) : "—"}</Fact>
+          <Fact label="Followers">
+            <Suspense fallback="—">
+              <SeriesStat stats={stats} id={id} followers />
+            </Suspense>
+          </Fact>
           <Fact label="Source">{sourceOf(id)}</Fact>
         </dl>
 
@@ -123,7 +169,11 @@ async function LoadSeries({ params }: { params: PageProps<"/series/[id]">["param
           <div className="min-w-0 space-y-10">
             <section>
               <h2 className="t-title2 mb-3">About</h2>
-              <Synopsis text={cleanDescription(s.description) || "No synopsis available."} />
+              <Synopsis
+                text={
+                  cleanDescription(s.description) || "No synopsis available."
+                }
+              />
               {genres.length > 0 && (
                 <div className="mt-5 flex flex-wrap gap-2">
                   {genres.map((g) => (
@@ -138,7 +188,17 @@ async function LoadSeries({ params }: { params: PageProps<"/series/[id]">["param
                 </div>
               )}
             </section>
-            <Suspense fallback={<ChapterList series={saved} chapters={primary} pending />}>
+            <Suspense
+              fallback={
+                <Suspense
+                  fallback={
+                    <ChapterList series={saved} chapters={[]} pending />
+                  }
+                >
+                  <PrimaryChaptersReady series={saved} chapters={primary} />
+                </Suspense>
+              }
+            >
               <MergedChapters series={saved} />
             </Suspense>
           </div>
@@ -148,14 +208,21 @@ async function LoadSeries({ params }: { params: PageProps<"/series/[id]">["param
               <Sources id={id} />
             </Suspense>
             <section>
-              <h2 className="t-footnote mb-2 px-4 font-semibold tracking-[0.02em] text-secondary uppercase">Information</h2>
+              <h2 className="t-footnote mb-2 px-4 font-semibold tracking-[0.02em] text-secondary uppercase">
+                Information
+              </h2>
               <dl className="grouped">
                 <Info label="Author" value={s.authors.join(", ")} />
                 <Info label="Artist" value={s.artists.join(", ")} />
                 <Info label="Type" value={s.type} />
                 <Info label="Released" value={s.year ? String(s.year) : ""} />
                 <Info label="Status" value={cap(s.status)} />
-                {s.altTitles.length > 0 && <Info label="Also known as" value={s.altTitles.slice(0, 3).join("\n")} />}
+                {s.altTitles.length > 0 && (
+                  <Info
+                    label="Also known as"
+                    value={s.altTitles.slice(0, 3).join("\n")}
+                  />
+                )}
               </dl>
             </section>
           </aside>
@@ -165,25 +232,80 @@ async function LoadSeries({ params }: { params: PageProps<"/series/[id]">["param
   );
 }
 
+async function SeriesStat({
+  stats,
+  id,
+  followers = false,
+}: {
+  stats: Promise<Awaited<ReturnType<typeof getStats>>>;
+  id: string;
+  followers?: boolean;
+}) {
+  const value = (await stats)[id];
+  if (followers) return <>{value?.follows ? compact(value.follows) : "—"}</>;
+  return (
+    <span className="flex items-center justify-center gap-1">
+      {value?.rating ? value.rating.toFixed(1) : "—"}
+      {value?.rating ? <StarIcon className="size-3.5 text-warning" /> : null}
+    </span>
+  );
+}
+async function PrimaryReadReady({
+  id,
+  chapters,
+}: {
+  id: string;
+  chapters: Promise<Chapter[]>;
+}) {
+  return <PrimaryRead id={id} chapters={await chapters} />;
+}
+async function PrimaryCountReady({
+  chapters,
+}: {
+  chapters: Promise<Chapter[]>;
+}) {
+  return <>{(await chapters).length || "—"}</>;
+}
+async function PrimaryChaptersReady({
+  series,
+  chapters,
+}: {
+  series: SavedSeries;
+  chapters: Promise<Chapter[]>;
+}) {
+  return <ChapterList series={series} chapters={await chapters} pending />;
+}
 function PrimaryRead({ id, chapters }: { id: string; chapters: Chapter[] }) {
   const readable = chapters
     .filter((c) => !c.externalUrl)
     .map((c) => ({ id: c.id, number: c.number }));
-  return readable.length ? <ReadButton seriesId={id} chapters={readable} /> : null;
+  return readable.length ? (
+    <ReadButton seriesId={id} chapters={readable} />
+  ) : null;
 }
 async function MergedRead({ id }: { id: string }) {
-  const { chapters } = await getMergedChapters(id).catch(() => ({ chapters: [] as Chapter[] }));
+  const { chapters } = await getMergedChapters(id).catch(() => ({
+    chapters: [] as Chapter[],
+  }));
   return <PrimaryRead id={id} chapters={chapters} />;
 }
 async function MergedCount({ id }: { id: string }) {
-  const { chapters } = await getMergedChapters(id).catch(() => ({ chapters: [] as Chapter[] }));
+  const { chapters } = await getMergedChapters(id).catch(() => ({
+    chapters: [] as Chapter[],
+  }));
   return <>{chapters.length || "—"}</>;
 }
 async function MergedChapters({ series }: { series: SavedSeries }) {
   const merged = await getMergedChapters(series.id).catch(() => null);
   if (!merged) return <ChapterList series={series} chapters={[]} />;
   const multi = merged.sources.filter((s) => s.used > 0).length > 1;
-  return <ChapterList series={series} chapters={merged.chapters} showSource={multi} />;
+  return (
+    <ChapterList
+      series={series}
+      chapters={merged.chapters}
+      showSource={multi}
+    />
+  );
 }
 
 async function Sources({ id }: { id: string }) {
@@ -205,7 +327,11 @@ async function Sources({ id }: { id: string }) {
               <span className="min-w-0 flex-1">
                 <span className="t-callout flex items-center gap-1.5">
                   {s.name}
-                  {s.primary && <span className="t-caption rounded-full bg-fill px-1.5 text-secondary">This page</span>}
+                  {s.primary && (
+                    <span className="t-caption rounded-full bg-fill px-1.5 text-secondary">
+                      This page
+                    </span>
+                  )}
                 </span>
                 <span className="t-footnote block text-secondary">
                   {s.error
@@ -224,20 +350,32 @@ async function Sources({ id }: { id: string }) {
         ))}
       </ul>
       <p className="t-caption mt-2 px-4 text-tertiary">
-        Each chapter opens from the sharpest available copy. If a source fails, reading continues from the next one.
+        Each chapter opens from the sharpest available copy. If a source fails,
+        reading continues from the next one.
       </p>
     </section>
   );
 }
 
 function compact(n: number) {
-  return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+  return new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(n);
 }
 
-function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+function Fact({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="min-w-[104px] flex-1 px-3 text-center shadow-[inset_-0.5px_0_0_var(--color-hairline)] last:shadow-none">
-      <dt className="t-caption font-medium tracking-[0.04em] text-tertiary uppercase">{label}</dt>
+      <dt className="t-caption font-medium tracking-[0.04em] text-tertiary uppercase">
+        {label}
+      </dt>
       <dd className="mt-1 truncate font-[family-name:var(--font-display)] text-[19px] font-semibold text-label/90 tabular-nums">
         {children}
       </dd>
@@ -260,7 +398,9 @@ function SourcesSkeleton() {
     <div>
       <div className="skeleton mb-2 ml-4 h-4 w-20 rounded" />
       <div className="skeleton h-[132px] rounded-[14px]" />
-      <p className="t-caption mt-2 px-4 text-tertiary">Checking other sources for this title…</p>
+      <p className="t-caption mt-2 px-4 text-tertiary">
+        Checking other sources for this title…
+      </p>
     </div>
   );
 }

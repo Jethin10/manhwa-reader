@@ -5,6 +5,7 @@ import { join } from "node:path";
 import sharp from "sharp";
 import { validImageSignature } from "@/lib/image-signing";
 import { relayEnabled, relayUrl } from "@/lib/relay";
+import { taskPool, QueueFullError } from "@/lib/concurrency";
 
 const ALLOWED = [
   /^uploads\.mangadex\.org$/,
@@ -31,24 +32,11 @@ const CACHE_HEADERS = {
   "Cache-Control": "public, max-age=31536000, immutable",
 };
 
-function limiter(max: number) {
-  let running = 0;
-  const queue: (() => void)[] = [];
-  return async function <T>(fn: () => Promise<T>): Promise<T> {
-    if (running >= max) await new Promise<void>((r) => queue.push(r));
-    running++;
-    try {
-      return await fn();
-    } finally {
-      running--;
-      queue.shift()?.();
-    }
-  };
-}
-
 // Keep heavy resizes from starving the server, and don't hammer MangaDex with parallel downloads.
-const withSlot = limiter(4);
-const withDownload = limiter(6);
+const withResize = taskPool(2, 2, 32);
+const withDownload = taskPool(6, 3);
+const DOWNLOAD_BUDGET = 20000;
+const MAX_IMAGE_BYTES = 32 * 1024 * 1024;
 
 function mimeFor(path: string) {
   const ext = path.split(".").pop()?.toLowerCase();
@@ -60,6 +48,42 @@ function mimeFor(path: string) {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const inflight = new Map<string, Promise<Buffer>>();
+const transformations = new Map<string, Promise<Buffer>>();
+
+async function imageBody(response: Response): Promise<Buffer> {
+  if (Number(response.headers.get("content-length")) > MAX_IMAGE_BYTES)
+    throw new Error("Image exceeds the download limit.");
+  if (!response.body) throw new Error("Image body is empty.");
+  const reader = response.body.getReader();
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > MAX_IMAGE_BYTES)
+        throw new Error("Image exceeds the download limit.");
+      chunks.push(
+        Buffer.from(value.buffer, value.byteOffset, value.byteLength),
+      );
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => {});
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
+  if (!bytes) throw new Error("Image body is empty.");
+  return Buffer.concat(chunks, bytes);
+}
+
+function imageFailure(error: unknown) {
+  return new Response("Image temporarily unavailable", {
+    status: error instanceof QueueFullError ? 503 : 502,
+    headers: { "Cache-Control": "no-store", "Retry-After": "2" },
+  });
+}
 
 /** Downloads an original once: deduped in flight, cached on disk, retried on dropped connections. */
 function getOriginal(target: URL, stableKey: string): Promise<Buffer> {
@@ -69,54 +93,87 @@ function getOriginal(target: URL, stableKey: string): Promise<Buffer> {
     CACHE_DIR,
     `${createHash("sha1").update(`src|${stableKey}`).digest("hex")}.bin`,
   );
+  let writing = false;
   const job = (async () => {
     try {
       return await readFile(file);
     } catch {
       // not cached yet
     }
-    const buf = await withDownload(async () => {
+    const deadline = Date.now() + DOWNLOAD_BUDGET;
+    const host = target.hostname.endsWith(".mangadex.network")
+      ? "mangadex.network"
+      : target.hostname;
+    const referer = REFERERS.find(([re]) => re.test(target.hostname))?.[1];
+    const attemptDownload = (viaRelay: boolean) =>
+      withDownload(
+        host,
+        async () => {
+          const remaining = deadline - Date.now();
+          if (remaining <= 0) throw new Error("Image request timed out.");
+          const response = await fetch(
+            viaRelay ? relayUrl(target.href, { referer, ttl: 300 }) : target,
+            {
+              headers: viaRelay
+                ? {}
+                : {
+                    "User-Agent": /mangadex\.(org|network)$/.test(
+                      target.hostname,
+                    )
+                      ? UA
+                      : BROWSER_UA,
+                    ...(referer ? { Referer: referer } : {}),
+                  },
+              redirect: "error",
+              signal: AbortSignal.timeout(
+                Math.min(remaining, viaRelay ? 6000 : 8000),
+              ),
+            },
+          );
+          if (!response.ok) {
+            await response.body?.cancel().catch(() => {});
+            return { status: response.status, buffer: null };
+          }
+          return { status: response.status, buffer: await imageBody(response) };
+        },
+        AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+      );
+    const buf = await (async () => {
       let lastErr: unknown;
       let missing = false;
-      for (let attempt = 0; attempt < 4; attempt++) {
+      for (let attempt = 0; attempt < 2 && Date.now() < deadline; attempt++) {
         try {
-          const referer = REFERERS.find(([re]) => re.test(target.hostname))?.[1];
-          const res = await fetch(target, {
-            headers: {
-              // MangaDex asks clients to identify themselves; other CDNs expect a browser.
-              "User-Agent": /mangadex\.(org|network)$/.test(target.hostname) ? UA : BROWSER_UA,
-              ...(referer ? { Referer: referer } : {}),
-            },
-            redirect: "error",
-            signal: AbortSignal.timeout(20000),
-          });
-          if (res.ok) return Buffer.from(await res.arrayBuffer());
-          lastErr = new Error(`upstream ${res.status}`);
-          if (res.status === 403) break;
-          if (res.status < 500 && res.status !== 429) {
+          const result = await attemptDownload(false);
+          if (result.buffer) return result.buffer;
+          lastErr = new Error(`upstream ${result.status}`);
+          if (result.status === 403) break;
+          if (result.status < 500 && result.status !== 429) {
             missing = true;
             break;
           }
         } catch (e) {
+          if (e instanceof QueueFullError) throw e;
           lastErr = e;
         }
-        await sleep(400 * 2 ** attempt);
+        // Retry delays must not reserve a network slot.
+        if (attempt === 0) await sleep(250);
       }
       // Hosts that refuse this server's IP may still serve Cloudflare's.
-      if (!missing && relayEnabled()) {
-        const referer = REFERERS.find(([re]) => re.test(target.hostname))?.[1];
-        const res = await fetch(relayUrl(target.href, { referer, ttl: 300 }), {
-          signal: AbortSignal.timeout(20000),
-        }).catch(() => null);
-        if (res?.ok) return Buffer.from(await res.arrayBuffer());
+      if (!missing && relayEnabled() && Date.now() < deadline) {
+        const result = await attemptDownload(true).catch(() => null);
+        if (result?.buffer) return result.buffer;
       }
       throw lastErr;
-    });
-    mkdir(CACHE_DIR, { recursive: true })
+    })();
+    writing = true;
+    void mkdir(CACHE_DIR, { recursive: true })
       .then(() => writeFile(file, buf))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => inflight.delete(stableKey));
     return buf;
-  })().finally(() => inflight.delete(stableKey));
+  })().finally(() => {
+    if (!writing) inflight.delete(stableKey);
+  });
   inflight.set(stableKey, job);
   return job;
 }
@@ -160,7 +217,9 @@ export async function GET(request: Request) {
       : {}),
   });
   const processing = process.env.IMAGE_PROCESSING !== "off";
-  const width = processing ? Math.min(2000, Math.max(0, parseInt(params.get("w") ?? "") || 0)) : 0;
+  const width = processing
+    ? Math.min(2000, Math.max(0, parseInt(params.get("w") ?? "") || 0))
+    : 0;
   const hd = processing && params.get("hd") === "1";
 
   // At-home hosts rotate, so key page images by their path (hash + filename), not the host.
@@ -174,8 +233,8 @@ export async function GET(request: Request) {
       return new Response(new Uint8Array(buf), {
         headers: headersFor(mimeFor(target.pathname)),
       });
-    } catch {
-      return new Response("Upstream error", { status: 502 });
+    } catch (error) {
+      return imageFailure(error);
     }
   }
 
@@ -196,35 +255,57 @@ export async function GET(request: Request) {
   let input: Buffer;
   try {
     input = await getOriginal(target, stableKey);
-  } catch {
-    return new Response("Upstream error", { status: 502 });
+  } catch (error) {
+    return imageFailure(error);
   }
 
-  const out = await withSlot(async () => {
-    const img = sharp(input, { limitInputPixels: false });
-    if (hd) {
-      const meta = await img.metadata();
-      const src = meta.width ?? 0;
-      const target = Math.min(1600, src * 2);
-      if (!src || target <= src) {
-        // Already high-res: keep pixels, just re-encode losslessly-ish.
-        return img.jpeg({ quality: 95, chromaSubsampling: "4:4:4" }).toBuffer();
+  let transform = transformations.get(key);
+  if (!transform) {
+    transform = withResize("resize", async () => {
+      const img = sharp(input, { limitInputPixels: 80_000_000 });
+      if (hd) {
+        const meta = await img.metadata();
+        const src = meta.width ?? 0;
+        const target = Math.min(1600, src * 2);
+        if (!src || target <= src) {
+          // Already high-res: keep pixels, just re-encode losslessly-ish.
+          return img
+            .jpeg({ quality: 95, chromaSubsampling: "4:4:4" })
+            .toBuffer();
+        }
+        return img
+          .resize({ width: target, kernel: "lanczos3" })
+          .sharpen({ sigma: 0.9, m1: 0.6, m2: 2.5 })
+          .jpeg({ quality: 93, chromaSubsampling: "4:4:4" })
+          .toBuffer();
       }
       return img
-        .resize({ width: target, kernel: "lanczos3" })
-        .sharpen({ sigma: 0.9, m1: 0.6, m2: 2.5 })
-        .jpeg({ quality: 93, chromaSubsampling: "4:4:4" })
+        .resize({ width, withoutEnlargement: true, kernel: "lanczos3" })
+        .webp({ quality: 90 })
         .toBuffer();
-    }
-    return img
-      .resize({ width, withoutEnlargement: true, kernel: "lanczos3" })
-      .webp({ quality: 90 })
-      .toBuffer();
-  });
-
-  mkdir(CACHE_DIR, { recursive: true })
-    .then(() => writeFile(file, out))
-    .catch(() => {});
+    }).then(
+      (out) => {
+        // Publish once per transform and keep the resolved single-flight entry until the
+        // file is available, without making the first client wait for disk I/O.
+        void mkdir(CACHE_DIR, { recursive: true })
+          .then(() => writeFile(file, out))
+          .catch(() => {})
+          .finally(() => transformations.delete(key));
+        return out;
+      },
+      (error) => {
+        transformations.delete(key);
+        throw error;
+      },
+    );
+    transformations.set(key, transform);
+  }
+  let out: Buffer;
+  try {
+    out = await transform;
+  } catch (error) {
+    return imageFailure(error);
+  }
 
   return new Response(new Uint8Array(out), {
     headers: headersFor(type),

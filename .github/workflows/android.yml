@@ -13,6 +13,11 @@ on:
       - package.json
       - .github/workflows/android.yml
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish this APK as the latest release
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -58,7 +63,23 @@ jobs:
           ./gradlew assembleRelease --no-daemon -PversionCode=${{ github.run_number }} -PversionName=$APP_VERSION
           cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/manhwa.apk"
 
+      - name: Verify the signed APK
+        run: |
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
+          "$APKSIGNER" verify --verbose --print-certs "$RUNNER_TEMP/manhwa.apk"
+          (cd "$RUNNER_TEMP" && sha256sum manhwa.apk > manhwa.apk.sha256)
+
+      - name: Save the installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: manhwa-apk
+          path: |
+            ${{ runner.temp }}/manhwa.apk
+            ${{ runner.temp }}/manhwa.apk.sha256
+          if-no-files-found: error
+
       - name: Publish the release
+        if: github.event_name == 'push' || inputs.publish_release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

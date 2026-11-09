@@ -7,7 +7,7 @@ import type { Suggestion } from "@/app/api/suggest/route";
 import { ChevronRight, SearchIcon } from "./Icons";
 import { RetryImg } from "./RetryImg";
 
-export type SearchSection = "manga" | "anime";
+export type SearchSection = "manga" | "anime" | "movies";
 
 // Suggestions already fetched this session, so retyping or backspacing is instant.
 const seen = new Map<string, Suggestion[]>();
@@ -26,13 +26,28 @@ export function SearchBox({
   const router = useRouter();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
-  const [found, setFound] = useState<{ key: string; items: Suggestion[] } | null>(null);
+  const [found, setFound] = useState<{
+    key: string;
+    items: Suggestion[];
+    failed?: boolean;
+  } | null>(null);
   const [active, setActive] = useState(-1);
   const box = useRef<HTMLFormElement>(null);
   const listId = useId();
   const target =
-    section === "anime" ? "/anime" : mangaOnly ? "/manga" : "/series";
-  const label = section === "anime" ? "Search anime" : "Search manga";
+    section === "movies"
+      ? "/movies"
+      : section === "anime"
+        ? "/anime"
+        : mangaOnly
+          ? "/manga"
+          : "/series";
+  const label =
+    section === "movies"
+      ? "Search movies"
+      : section === "anime"
+        ? "Search anime"
+        : "Search manga";
   const term = q.trim();
   const key = `${section}|${term.toLowerCase()}`;
   const fresh = found?.key === key ? found.items : (seen.get(key) ?? null);
@@ -46,13 +61,23 @@ export function SearchBox({
     const ctl = new AbortController();
     // Wait for a pause in typing so each keystroke doesn't start a search.
     const timer = setTimeout(() => {
-      fetch(`/api/suggest?section=${section}&q=${encodeURIComponent(term)}`, { signal: ctl.signal })
-        .then((r) => (r.ok ? r.json() : { items: [] }))
+      fetch(`/api/suggest?section=${section}&q=${encodeURIComponent(term)}`, {
+        signal: AbortSignal.any([ctl.signal, AbortSignal.timeout(8000)]),
+      })
+        .then((r) => {
+          if (!r.ok) throw new Error("Suggestions unavailable.");
+          return r.json();
+        })
         .then(({ items }: { items: Suggestion[] }) => {
+          if (ctl.signal.aborted) return;
+          if (!Array.isArray(items)) throw new Error("Invalid suggestions.");
           seen.set(key, items);
+          if (seen.size > 100) seen.delete(seen.keys().next().value!);
           setFound({ key, items });
         })
-        .catch(() => {});
+        .catch(() => {
+          if (!ctl.signal.aborted) setFound({ key, items: [], failed: true });
+        });
     }, 180);
     return () => {
       clearTimeout(timer);
@@ -92,7 +117,9 @@ export function SearchBox({
         } else searchAll();
       }}
       className={`relative flex items-center gap-2 bg-fill transition-colors focus-within:bg-fill-2 ${
-        large ? "h-11 rounded-[12px] px-3.5" : "h-9 rounded-[10px] px-3"
+        large
+          ? "h-11 rounded-[12px] px-3.5"
+          : "h-9 rounded-[10px] px-3 [@media(pointer:coarse)]:h-11"
       }`}
     >
       {target === "/series" && <input type="hidden" name="type" value="all" />}
@@ -116,7 +143,9 @@ export function SearchBox({
           else if (n && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
             e.preventDefault();
             setOpen(true);
-            setActive((i) => (e.key === "ArrowDown" ? (i + 1) % n : (i <= 0 ? n : i) - 1));
+            setActive((i) =>
+              e.key === "ArrowDown" ? (i + 1) % n : (i <= 0 ? n : i) - 1,
+            );
           }
         }}
         role="combobox"
@@ -133,7 +162,11 @@ export function SearchBox({
         spellCheck={false}
         autoFocus={autoFocus}
         placeholder={
-          section === "anime" ? "Search anime..." : "Search manga..."
+          section === "movies"
+            ? "Search movies or IMDb ID"
+            : section === "anime"
+              ? "Search anime"
+              : "Search manga"
         }
         aria-label={label}
         className={`min-w-0 w-full bg-transparent outline-none placeholder:text-secondary [&::-webkit-search-cancel-button]:hidden ${
@@ -143,7 +176,7 @@ export function SearchBox({
       <button
         type="submit"
         aria-label={label}
-        className="grid size-8 shrink-0 place-items-center rounded-full text-secondary transition hover:bg-fill hover:text-label"
+        className="hit grid size-8 shrink-0 place-items-center rounded-full text-secondary transition hover:bg-fill hover:text-label"
       >
         <ChevronRight className="size-4" />
       </button>
@@ -162,7 +195,12 @@ export function SearchBox({
             className={`transition-opacity ${loading ? "opacity-50" : ""}`}
           >
             {items?.map((s, i) => (
-              <li key={s.id} id={`${listId}-${i}`} role="option" aria-selected={i === active}>
+              <li
+                key={s.id}
+                id={`${listId}-${i}`}
+                role="option"
+                aria-selected={i === active}
+              >
                 <Link
                   href={s.href}
                   onClick={() => setOpen(false)}
@@ -182,7 +220,11 @@ export function SearchBox({
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="t-callout block truncate">{s.title}</span>
-                    {s.meta && <span className="t-caption block truncate text-secondary">{s.meta}</span>}
+                    {s.meta && (
+                      <span className="t-caption block truncate text-secondary">
+                        {s.meta}
+                      </span>
+                    )}
                   </span>
                 </Link>
               </li>
@@ -195,15 +237,21 @@ export function SearchBox({
             </p>
           )}
           {fresh && !fresh.length && (
-            <p className="t-footnote px-3 py-3 text-secondary">No quick matches. Search every source below.</p>
+            <p className="t-footnote px-3 py-3 text-secondary">
+              {found?.key === key && found.failed
+                ? "Suggestions didn't load. Use the full search below."
+                : "No quick matches. Try a full search below."}
+            </p>
           )}
           <button
             type="button"
             onClick={searchAll}
-            className="t-footnote flex w-full items-center gap-2 border-t-[0.5px] border-white/10 px-3 py-3 text-left text-accent transition-colors hover:bg-white/[0.06]"
+            className="t-footnote flex min-h-11 w-full items-center gap-2 border-t-[0.5px] border-white/10 px-3 py-3 text-left text-accent transition-colors hover:bg-white/[0.06]"
           >
             <SearchIcon className="size-3.5" />
-            <span className="min-w-0 flex-1 truncate">See all results for “{term}”</span>
+            <span className="min-w-0 flex-1 truncate">
+              See all results for “{term}”
+            </span>
             <ChevronRight className="size-3.5" />
           </button>
         </div>

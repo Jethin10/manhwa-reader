@@ -40,7 +40,10 @@ let saved: Record<string, DownloadedChapter> | null = null;
 const jobs = new Map<string, DownloadJob>();
 const controllers = new Map<string, AbortController>();
 const listeners = new Set<() => void>();
-let snapshot = { saved: {} as Record<string, DownloadedChapter>, jobs: [] as DownloadJob[] };
+let snapshot = {
+  saved: {} as Record<string, DownloadedChapter>,
+  jobs: [] as DownloadJob[],
+};
 let running = false;
 
 function load() {
@@ -52,11 +55,13 @@ function load() {
   }
   return saved!;
 }
-function persist() {
+function persist(next = load()) {
   try {
-    localStorage.setItem(META, JSON.stringify(load()));
+    localStorage.setItem(META, JSON.stringify(next));
+    saved = next;
+    return true;
   } catch {
-    // Metadata is small; if storage is full the pages are still cached.
+    return false;
   }
 }
 function emit() {
@@ -131,20 +136,36 @@ export function retryDownload(id: string) {
 
 export async function deleteDownloads(ids: string[]) {
   const have = load();
-  const cache = await caches.open(DOWNLOAD_CACHE);
-  // A page can belong to two copies only by coincidence; keep anything still referenced.
-  const keep = new Set(
-    Object.values(have)
-      .filter((d) => !ids.includes(d.id))
-      .flatMap((d) => d.pages),
+  const removing = new Set(ids);
+  const next = Object.fromEntries(
+    Object.entries(have).filter(([id]) => !removing.has(id)),
   );
-  for (const id of ids) {
-    for (const url of have[id]?.pages ?? [])
-      if (!keep.has(url)) await cache.delete(url);
-    delete have[id];
+  if (!persist(next)) {
+    toast("Couldn't save the download list. Check your device storage.", {
+      tone: "error",
+    });
+    return;
   }
-  persist();
-  emit();
+  try {
+    const cache = await caches.open(DOWNLOAD_CACHE);
+    // A page can belong to two copies only by coincidence; keep anything still referenced.
+    const keep = new Set(
+      Object.values(have)
+        .filter((d) => !removing.has(d.id))
+        .flatMap((d) => d.pages),
+    );
+    for (const id of ids) {
+      for (const url of have[id]?.pages ?? [])
+        if (!keep.has(url)) await cache.delete(url);
+    }
+  } catch {
+    toast(
+      "Removed from your list, but some cached files couldn't be cleared.",
+      { tone: "error" },
+    );
+  } finally {
+    emit();
+  }
 }
 
 async function pump() {
@@ -167,19 +188,47 @@ async function pump() {
     );
 }
 
+function retryDelay(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    const cancel = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", cancel);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", cancel, { once: true });
+  });
+}
 async function fetchRetry(url: string, signal: AbortSignal) {
   let last: unknown;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 2; attempt++) {
     try {
       // The header tells the service worker not to keep a second copy in its image cache.
-      const res = await fetch(url, { signal, headers: { "x-mr-download": "1" } });
+      const res = await fetch(url, {
+        signal: AbortSignal.any([signal, AbortSignal.timeout(25000)]),
+        headers: { "x-mr-download": "1" },
+      });
       if (res.ok) return res;
       last = new Error(`HTTP ${res.status}`);
+      await res.body?.cancel().catch(() => {});
+      if (res.status < 500 && res.status !== 429) throw last;
     } catch (e) {
-      if (signal.aborted) throw e;
+      if (
+        signal.aborted ||
+        (last instanceof Error &&
+          /^HTTP [34]/.test(last.message) &&
+          last.message !== "HTTP 429")
+      )
+        throw e;
       last = e;
     }
-    await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+    if (attempt === 0) await retryDelay(800, signal);
   }
   throw last;
 }
@@ -191,6 +240,7 @@ async function download(job: DownloadJob): Promise<boolean> {
   job.state = "downloading";
   emit();
   const stored: string[] = [];
+  let workerFailure: unknown;
   try {
     const res = await fetchRetry(
       `/api/chapter/pages?id=${encodeURIComponent(job.id)}`,
@@ -205,32 +255,47 @@ async function download(job: DownloadJob): Promise<boolean> {
     let bytes = 0;
     let next = 0;
     const worker = async () => {
-      while (next < urls.length) {
-        const url = urls[next++];
-        const hit = await cache.match(url);
-        if (hit) {
-          bytes += Number(hit.headers.get("content-length")) || 0;
-        } else {
-          const page = await fetchRetry(url, ctrl.signal);
-          const blob = await page.blob();
-          bytes += blob.size;
-          await cache.put(
-            url,
-            new Response(blob, {
-              headers: {
-                "Content-Type": page.headers.get("content-type") ?? blob.type,
-                "Content-Length": String(blob.size),
-              },
-            }),
-          );
-          stored.push(url);
+      try {
+        while (next < urls.length) {
+          ctrl.signal.throwIfAborted();
+          const url = urls[next++];
+          const hit = await cache.match(url);
+          if (hit) {
+            bytes += Number(hit.headers.get("content-length")) || 0;
+          } else {
+            const page = await fetchRetry(url, ctrl.signal);
+            const blob = await page.blob();
+            ctrl.signal.throwIfAborted();
+            if (!blob.size) throw new Error("A chapter page was empty.");
+            bytes += blob.size;
+            await cache.put(
+              url,
+              new Response(blob, {
+                headers: {
+                  "Content-Type": page.headers.get("content-type") ?? blob.type,
+                  "Content-Length": String(blob.size),
+                },
+              }),
+            );
+            stored.push(url);
+          }
+          job.done++;
+          emit();
         }
-        job.done++;
-        emit();
+      } catch (error) {
+        if (!ctrl.signal.aborted) {
+          workerFailure = error;
+          ctrl.abort(error);
+        }
+        throw error;
       }
     };
-    await Promise.all(Array.from({ length: PARALLEL_PAGES }, worker));
-    load()[job.id] = {
+    await Promise.allSettled(
+      Array.from({ length: Math.min(PARALLEL_PAGES, urls.length) }, worker),
+    );
+    if (workerFailure) throw workerFailure;
+    ctrl.signal.throwIfAborted();
+    const entry = {
       id: job.id,
       number: job.number,
       title: job.title,
@@ -239,12 +304,16 @@ async function download(job: DownloadJob): Promise<boolean> {
       bytes,
       at: Date.now(),
     };
-    persist();
+    if (!persist({ ...load(), [job.id]: entry }))
+      throw new DOMException(
+        "Couldn't save the download index. Free some device storage and retry.",
+        "QuotaExceededError",
+      );
     jobs.delete(job.id);
     void cacheOfflineShell();
     return true;
   } catch (e) {
-    if (ctrl.signal.aborted) {
+    if (ctrl.signal.aborted && !workerFailure) {
       const cache = await caches.open(DOWNLOAD_CACHE);
       await Promise.all(stored.map((u) => cache.delete(u)));
     } else {
@@ -258,12 +327,15 @@ async function download(job: DownloadJob): Promise<boolean> {
         e instanceof DOMException && e.name === "QuotaExceededError"
           ? "Storage is full. Delete some downloads to make room."
           : `Couldn't download ${name}`,
-        { tone: "error", action: { label: "Retry", run: () => retryDownload(job.id) } },
+        {
+          tone: "error",
+          action: { label: "Retry", run: () => retryDownload(job.id) },
+        },
       );
     }
     return false;
   } finally {
-    controllers.delete(job.id);
+    if (controllers.get(job.id) === ctrl) controllers.delete(job.id);
     emit();
   }
 }

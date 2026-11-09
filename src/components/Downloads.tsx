@@ -14,7 +14,7 @@ import {
 import type { Chapter } from "@/lib/catalog";
 import { Reader, type ChapterNav } from "./Reader";
 import { Cover } from "./SeriesCard";
-import { ChevronRight } from "./Icons";
+import { ChevronLeft, ChevronRight } from "./Icons";
 
 const num = (c: { number: string | null }) => {
   const n = parseFloat(c.number ?? "");
@@ -133,8 +133,15 @@ function DownloadList({
   }, [saved]);
 
   return (
-    <div className="gutter mx-auto max-w-[860px] pt-4 pb-16 lg:pt-12">
-      <h1 className="t-large">Downloads</h1>
+    <div className="gutter mx-auto max-w-[860px] pt-2 pb-16 lg:pt-6">
+      <Link
+        href="/bookmarks"
+        className="t-sub -ml-1 inline-flex min-h-11 items-center gap-1 text-accent"
+      >
+        <ChevronLeft className="size-4" />
+        Library
+      </Link>
+      <h1 className="t-large mt-2">Downloads</h1>
       <p className="t-sub mt-1 text-secondary">
         {all.length
           ? `${all.length} ${all.length === 1 ? "chapter" : "chapters"} · ${formatBytes(total)} on this device`
@@ -147,12 +154,12 @@ function DownloadList({
       {jobs.length > 0 && (
         <section className="mt-8">
           <div className="mb-2 flex items-center justify-between px-4">
-            <h2 className="t-footnote font-semibold tracking-[0.02em] text-secondary uppercase">
-              Queue · {jobs.length}
+            <h2 className="t-footnote font-semibold text-secondary">
+              Queue ({jobs.length})
             </h2>
             <button
               onClick={() => jobs.forEach((j) => cancelDownload(j.id))}
-              className="t-footnote font-semibold text-accent"
+              className="t-footnote min-h-11 font-semibold text-accent"
             >
               Cancel all
             </button>
@@ -188,14 +195,14 @@ function DownloadList({
                   {j.state === "failed" && (
                     <button
                       onClick={() => retryDownload(j.id)}
-                      className="t-footnote font-semibold text-accent"
+                      className="t-footnote min-h-11 px-2 font-semibold text-accent"
                     >
                       Retry
                     </button>
                   )}
                   <button
                     onClick={() => cancelDownload(j.id)}
-                    className="t-footnote font-semibold text-secondary"
+                    className="t-footnote min-h-11 px-2 font-semibold text-secondary"
                   >
                     {j.state === "failed" ? "Remove" : "Cancel"}
                   </button>
@@ -216,7 +223,8 @@ function DownloadList({
           <h2 className="t-title3 mt-5">No downloads yet</h2>
           <p className="t-callout mx-auto mt-2 max-w-sm text-secondary">
             On a series page, tap the download icon next to a chapter, or the
-            one above the list to save the next few unread chapters.
+            one above the list to save the next few unread chapters. Movie
+            providers don’t offer downloads.
           </p>
           <Link href="/bookmarks" className="btn btn-gray mt-7">
             Open Library
@@ -282,22 +290,22 @@ function DownloadList({
                         </li>
                       ))}
                     </ul>
-                    <div className="flex gap-2 border-t border-white/[0.06] p-3">
+                    <div className="flex flex-wrap gap-2 border-t border-white/[0.06] p-3">
                       <Link
                         href={`/downloads?read=${encodeURIComponent(list[list.length - 1].id)}`}
-                        className="btn btn-primary h-10 flex-1 text-[14px]"
+                        className="btn btn-primary basis-full text-[14px] sm:flex-1 sm:basis-0"
                       >
                         Read offline
                       </Link>
                       <Link
                         href={`/series/${s.id}`}
-                        className="btn btn-gray h-10 text-[14px]"
+                        className="btn btn-gray flex-1 text-[14px] sm:flex-none"
                       >
                         Series
                       </Link>
                       <button
                         onClick={() => void deleteDownloads(list.map((d) => d.id))}
-                        className="btn h-10 bg-[#ff453a]/15 text-[14px] text-[#ff453a]"
+                        className="btn flex-1 bg-[#ff453a]/15 text-[14px] text-[#ff453a] sm:flex-none"
                       >
                         Delete all
                       </button>

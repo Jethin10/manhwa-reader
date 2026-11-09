@@ -2,6 +2,7 @@ import { browseAnime } from "@/lib/anime";
 import { providers, withTimeout } from "@/lib/catalog";
 import { coverSrc } from "@/lib/images";
 import { sameTitle } from "@/lib/titles";
+import { searchMovies } from "@/lib/movies";
 import type { ProviderId } from "@/lib/sources";
 
 export type Suggestion = { id: string; title: string; cover: string; meta: string; href: string };
@@ -15,7 +16,7 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const q = (params.get("q") ?? "").trim().slice(0, 80);
   if (q.length < 2) return Response.json({ items: [] });
-  const items = params.get("section") === "anime" ? await anime(q) : await manga(q);
+  const items = params.get("section") === "movies" ? await movies(q) : params.get("section") === "anime" ? await anime(q) : await manga(q);
   return Response.json(
     { items },
     { headers: { "Cache-Control": "public, max-age=300, stale-while-revalidate=3600" } },
@@ -57,3 +58,8 @@ async function anime(q: string): Promise<Suggestion[]> {
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+async function movies(q: string): Promise<Suggestion[]> {
+  const result = await searchMovies(q).catch(() => null);
+  return (result?.items ?? []).slice(0, LIMIT).map((m) => ({ id: m.id, title: m.title, cover: m.poster, meta: ["Movie", m.year].filter(Boolean).join(" · "), href: `/movies/${m.id}` }));
+}
