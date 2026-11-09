@@ -135,10 +135,10 @@ export function Chrome({
           <Link
             href="/"
             className="flex min-h-11 items-center gap-2.5"
-            aria-label="Manhwa home"
+            aria-label="Kairo home"
           >
             <Logo />
-            <span className="t-headline">Manhwa</span>
+            <span className="t-headline">Kairo</span>
           </Link>
           <nav
             className="hidden items-center gap-1 lg:flex"

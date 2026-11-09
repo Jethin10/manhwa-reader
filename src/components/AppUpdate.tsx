@@ -20,13 +20,20 @@ function newer(a: string, b: string) {
 async function latestRelease(): Promise<Release | null> {
   const cached = sessionStorage.getItem(CHECKED);
   if (cached) return JSON.parse(cached);
-  const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`);
+  const res = await fetch(
+    `https://api.github.com/repos/${REPO}/releases/latest`,
+  );
   if (!res.ok) return null;
   const data = await res.json();
-  const apk = (data.assets as { name: string; browser_download_url: string }[]).find((a) =>
-    a.name.endsWith(".apk"),
-  );
-  const release = apk ? { version: String(data.tag_name).replace(/^v/, ""), url: apk.browser_download_url } : null;
+  const apk = (
+    data.assets as { name: string; browser_download_url: string }[]
+  ).find((a) => a.name.endsWith(".apk"));
+  const release = apk
+    ? {
+        version: String(data.tag_name).replace(/^v/, ""),
+        url: apk.browser_download_url,
+      }
+    : null;
   sessionStorage.setItem(CHECKED, JSON.stringify(release));
   return release;
 }
@@ -39,21 +46,37 @@ async function latestRelease(): Promise<Release | null> {
  */
 export function AppUpdate() {
   const [update, setUpdate] = useState<Release | null>(null);
+  useEffect(() => {
+    const downloaded = () => {
+      void import("@/lib/downloads").then((module) =>
+        module.cacheOfflineShell(),
+      );
+    };
+    window.addEventListener("mr:video-downloaded", downloaded);
+    return () => window.removeEventListener("mr:video-downloaded", downloaded);
+  }, []);
 
   useEffect(() => {
-    if (process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator)) return;
+    if (
+      process.env.NODE_ENV !== "production" ||
+      !("serviceWorker" in navigator)
+    )
+      return;
     let reg: ServiceWorkerRegistration | undefined;
     navigator.serviceWorker
       .register("/sw.js", { scope: "/", updateViaCache: "none" })
       .then((r) => (reg = r))
       .catch(() => {});
-    const check = () => document.visibilityState === "visible" && reg?.update().catch(() => {});
+    const check = () =>
+      document.visibilityState === "visible" && reg?.update().catch(() => {});
     document.addEventListener("visibilitychange", check);
     return () => document.removeEventListener("visibilitychange", check);
   }, []);
 
   useEffect(() => {
-    const installed = navigator.userAgent.match(/ManhwaApp\/(\d+(?:\.\d+)*)/)?.[1];
+    const installed = navigator.userAgent.match(
+      /ManhwaApp\/(\d+(?:\.\d+)*)/,
+    )?.[1];
     if (!installed) return;
     latestRelease()
       .then((r) => r && newer(r.version, installed) && setUpdate(r))
@@ -69,12 +92,21 @@ export function AppUpdate() {
     >
       <span className="flex-1 text-[15px] leading-5">
         <span className="block font-semibold">Update available</span>
-        <span className="block text-[13px] text-secondary">Version {update.version} is ready to install.</span>
+        <span className="block text-[13px] text-secondary">
+          Version {update.version} is ready to install.
+        </span>
       </span>
-      <button type="button" className="pressable px-2 text-[15px] text-secondary" onClick={() => setUpdate(null)}>
+      <button
+        type="button"
+        className="pressable px-2 text-[15px] text-secondary"
+        onClick={() => setUpdate(null)}
+      >
         Later
       </button>
-      <a href={update.url} className="pressable rounded-full bg-accent px-4 py-1.5 text-[15px] font-semibold text-white">
+      <a
+        href={update.url}
+        className="pressable rounded-full bg-accent px-4 py-1.5 text-[15px] font-semibold text-white"
+      >
         Update
       </a>
     </div>

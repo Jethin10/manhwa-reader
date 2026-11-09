@@ -24,7 +24,7 @@ export type DownloadJob = {
   number: string | null;
   title: string | null;
   series: SavedSeries;
-  state: "queued" | "downloading" | "failed";
+  state: "queued" | "downloading" | "paused" | "failed";
   done: number;
   total: number;
   error?: string;
@@ -33,8 +33,10 @@ type ChapterInfo = { id: string; number: string | null; title: string | null };
 
 export const DOWNLOAD_CACHE = "downloads";
 const META = "mr:downloads";
+const QUEUE = "mr:download-queue";
+const PAUSED = "Download paused";
 const SHELL = "shell-v2";
-const PARALLEL_PAGES = 4;
+const PARALLEL_PAGES = 6;
 
 let saved: Record<string, DownloadedChapter> | null = null;
 const jobs = new Map<string, DownloadJob>();
@@ -45,6 +47,48 @@ let snapshot = {
   jobs: [] as DownloadJob[],
 };
 let running = false;
+let restored = false;
+
+function restoreQueue() {
+  if (restored || typeof localStorage === "undefined") return;
+  restored = true;
+  try {
+    const raw = localStorage.getItem(QUEUE);
+    const list = raw && raw.length < 1024 * 1024 ? JSON.parse(raw) : [];
+    if (Array.isArray(list))
+      for (const job of list.slice(0, 2000)) {
+        if (
+          job &&
+          typeof job.id === "string" &&
+          job.id.length < 500 &&
+          typeof job.series?.id === "string" &&
+          typeof job.series?.title === "string" &&
+          (job.number === null || typeof job.number === "string") &&
+          (job.title === null || typeof job.title === "string") &&
+          !load()[job.id]
+        ) {
+          jobs.set(job.id, {
+            id: job.id,
+            series: job.series,
+            number: job.number,
+            title: job.title,
+            state: "paused",
+            done: 0,
+            total: 0,
+          });
+        }
+      }
+  } catch {
+    /* Invalid queues never start requests. */
+  }
+}
+function persistQueue() {
+  try {
+    localStorage.setItem(QUEUE, JSON.stringify([...jobs.values()]));
+  } catch {
+    /* Completion still requires durable chapter metadata. */
+  }
+}
 
 function load() {
   if (saved) return saved;
@@ -85,8 +129,9 @@ const SERVER = { saved: {}, jobs: [] } as typeof snapshot;
 let primed = false;
 function getSnapshot() {
   if (!primed) {
+    restoreQueue();
     primed = true;
-    snapshot = { saved: { ...load() }, jobs: [] };
+    snapshot = { saved: { ...load() }, jobs: [...jobs.values()] };
   }
   return snapshot;
 }
@@ -102,8 +147,11 @@ export function localPage(src: string) {
 }
 
 export function queueDownloads(series: SavedSeries, chapters: ChapterInfo[]) {
+  restoreQueue();
   const have = load();
+  let added = 0;
   for (const c of chapters) {
+    if (jobs.size >= 2000) break;
     if (have[c.id] || jobs.has(c.id)) continue;
     jobs.set(c.id, {
       ...c,
@@ -112,17 +160,38 @@ export function queueDownloads(series: SavedSeries, chapters: ChapterInfo[]) {
       done: 0,
       total: 0,
     });
+    added++;
   }
+  persistQueue();
   emit();
   // Ask the browser not to evict saved chapters when space runs low.
   void navigator.storage?.persist?.().catch(() => {});
   void pump();
+  return added;
 }
 
 export function cancelDownload(id: string) {
   controllers.get(id)?.abort();
   jobs.delete(id);
+  persistQueue();
   emit();
+}
+
+export function pauseDownload(id: string) {
+  const job = jobs.get(id);
+  if (!job || job.state === "failed") return;
+  job.state = "paused";
+  controllers.get(id)?.abort(PAUSED);
+  persistQueue();
+  emit();
+}
+export function resumeDownload(id: string) {
+  const job = jobs.get(id);
+  if (!job || job.state !== "paused") return;
+  job.state = "queued";
+  persistQueue();
+  emit();
+  void pump();
 }
 
 export function retryDownload(id: string) {
@@ -130,6 +199,7 @@ export function retryDownload(id: string) {
   if (!job) return;
   job.state = "queued";
   job.error = undefined;
+  persistQueue();
   emit();
   void pump();
 }
@@ -238,6 +308,7 @@ async function download(job: DownloadJob): Promise<boolean> {
   const ctrl = new AbortController();
   controllers.set(job.id, ctrl);
   job.state = "downloading";
+  job.done = 0;
   emit();
   const stored: string[] = [];
   let workerFailure: unknown;
@@ -313,7 +384,13 @@ async function download(job: DownloadJob): Promise<boolean> {
     void cacheOfflineShell();
     return true;
   } catch (e) {
-    if (ctrl.signal.aborted && !workerFailure) {
+    if (
+      ctrl.signal.aborted &&
+      !workerFailure &&
+      ctrl.signal.reason === PAUSED
+    ) {
+      // Keep completed pages for resume; the active request has been aborted.
+    } else if (ctrl.signal.aborted && !workerFailure) {
       const cache = await caches.open(DOWNLOAD_CACHE);
       await Promise.all(stored.map((u) => cache.delete(u)));
     } else {
@@ -336,6 +413,7 @@ async function download(job: DownloadJob): Promise<boolean> {
     return false;
   } finally {
     if (controllers.get(job.id) === ctrl) controllers.delete(job.id);
+    persistQueue();
     emit();
   }
 }
@@ -344,9 +422,22 @@ async function download(job: DownloadJob): Promise<boolean> {
  * The Downloads screen must open without a connection, even if it was never visited:
  * store its HTML and the scripts and styles it loads.
  */
-async function cacheOfflineShell() {
+let shellTask: Promise<void> | undefined;
+let shellSavedAt = 0;
+export function cacheOfflineShell(): Promise<void> {
+  if (Date.now() - shellSavedAt < 60000) return Promise.resolve();
+  if (!shellTask)
+    shellTask = saveOfflineShell().finally(() => {
+      shellTask = undefined;
+    });
+  return shellTask;
+}
+async function saveOfflineShell() {
   try {
-    const res = await fetch("/downloads", { cache: "no-store" });
+    const res = await fetch("/downloads", {
+      cache: "no-store",
+      signal: AbortSignal.timeout(12000),
+    });
     if (!res.ok) return;
     const html = await res.clone().text();
     const shell = await caches.open(SHELL);
@@ -358,10 +449,13 @@ async function cacheOfflineShell() {
     await Promise.all(
       assets.map(async (a) => {
         if (await statics.match(a)) return;
-        const r = await fetch(a).catch(() => null);
+        const r = await fetch(a, { signal: AbortSignal.timeout(12000) }).catch(
+          () => null,
+        );
         if (r?.ok) await statics.put(a, r);
       }),
     );
+    shellSavedAt = Date.now();
   } catch {
     // Offline shell is best effort; the downloads themselves are already saved.
   }

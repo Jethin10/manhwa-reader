@@ -37,7 +37,7 @@ export const DEFAULT_MOVIE_PREFERENCES: MoviePreferences = {
   seek: 10,
   timeout: 20,
   rememberProgress: true,
-  isolatePlayer: false,
+  isolatePlayer: true,
 };
 export function normalizeMoviePreferences(value: unknown): MoviePreferences {
   const r =
@@ -68,7 +68,7 @@ export function normalizeMoviePreferences(value: unknown): MoviePreferences {
       ? Number(r.timeout)
       : 20,
     rememberProgress: r.rememberProgress !== false,
-    isolatePlayer: r.isolatePlayer === true,
+    isolatePlayer: r.isolatePlayer !== false,
   };
 }
 export function normalizeMovieHistory(value: unknown): MovieHistory[] {

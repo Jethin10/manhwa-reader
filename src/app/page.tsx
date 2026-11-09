@@ -8,9 +8,14 @@ import {
   type LatestEntry,
   type SeriesType,
 } from "@/lib/catalog";
-import { FeaturedCarousel } from "@/components/FeaturedCarousel";
 import { ContinueReading } from "@/components/ContinueReading";
-import { ContinueWatching } from "@/components/AnimeLibrary";
+import { AnimeCard, ContinueWatching } from "@/components/AnimeLibrary";
+import { ContinueMovies, MovieCard } from "@/components/MovieLibrary";
+import { Billboard, type BillboardItem } from "@/components/Billboard";
+import { browseAnime } from "@/lib/anime";
+import { browseMovies } from "@/lib/movies";
+import type { MovieCategory } from "@/lib/movie-types";
+import { coverSrc } from "@/lib/images";
 import { Cover, SeriesCard } from "@/components/SeriesCard";
 import { Shelf, ShelfItem } from "@/components/Shelf";
 import { TimeAgo } from "@/components/TimeAgo";
@@ -28,21 +33,39 @@ async function browseOrEmpty(opts: BrowseOpts) {
 
 export default function Home() {
   return (
-    <div className="space-y-11 pb-8 lg:space-y-14">
+    <div className="space-y-10 pb-8 lg:space-y-12">
       <Suspense fallback={<HeroSkeleton />}>
-        <Featured />
+        <Feature />
       </Suspense>
       <ContinueReading />
       <ContinueWatching />
+      <div className="gutter mx-auto max-w-[1440px] empty:hidden">
+        <ContinueMovies />
+      </div>
+      <Suspense fallback={<ShelfSkeleton />}>
+        <MovieShelf title="Popular Movies" category="popular" />
+      </Suspense>
+      <Suspense fallback={<ShelfSkeleton />}>
+        <AnimeShelf title="Trending Anime" category="popular" />
+      </Suspense>
       <Suspense fallback={<ShelfSkeleton />}>
         <TopCharts />
       </Suspense>
       <Suspense fallback={<ShelfSkeleton />}>
+        <AnimeShelf title="Airing Now" category="airing" />
+      </Suspense>
+      <Suspense fallback={<ShelfSkeleton />}>
+        <MovieShelf title="New Releases" category="new" />
+      </Suspense>
+      <Suspense fallback={<ShelfSkeleton />}>
         <SeriesShelf
-          title="Highest Rated"
+          title="Highest Rated Manhwa"
           order="rating"
           href="/series?order=rating"
         />
+      </Suspense>
+      <Suspense fallback={<ShelfSkeleton />}>
+        <MovieShelf title="Telugu Picks" category="telugu" />
       </Suspense>
       <Suspense fallback={<ShelfSkeleton />}>
         <SeriesShelf
@@ -55,37 +78,95 @@ export default function Home() {
       <Suspense fallback={<LatestSkeleton />}>
         <Latest />
       </Suspense>
-      <Suspense fallback={<ShelfSkeleton />}>
-        <SeriesShelf
-          title="New Arrivals"
-          order="createdAt"
-          href="/series?order=createdAt"
-        />
-      </Suspense>
     </div>
   );
 }
 
-async function Featured() {
-  let { series } = await browseOrEmpty({
-    source: "asura",
-    order: "followedCount",
-    limit: 8,
-  });
-  if (!series.length)
-    ({ series } = await browseOrEmpty({
-      source: "mangadex",
-      order: "followedCount",
-      limit: 8,
-    }));
-  if (!series.length)
-    return (
-      <div className="gutter t-callout py-20 text-secondary">
-        The catalog is unavailable. Try Browse or Anime.
-      </div>
-    );
-  const stats = await getStats(series);
-  return <FeaturedCarousel items={series} stats={stats} />;
+const dayNumber = () => Math.floor(Date.now() / 86_400_000);
+
+/** One feature a day, from movies or, if they're unavailable, anime. */
+async function Feature() {
+  await connection();
+  const [movies, anime] = await Promise.all([
+    browseMovies("popular", 1).catch(() => ({ items: [] })),
+    browseAnime("", "popular", 1).catch(() => ({ items: [] })),
+  ]);
+  const day = dayNumber();
+  const films = movies.items
+    .filter((m) => m.background && m.description)
+    .slice(0, 10);
+  const shows = anime.items.filter((a) => a.cover).slice(0, 10);
+  let item: BillboardItem | null = null;
+  if (films.length) {
+    const m = films[day % films.length];
+    item = {
+      title: m.title,
+      image: m.background,
+      kicker: "Movie of the day",
+      facts: [m.year, m.rating && `IMDb ${m.rating}`, m.runtime].filter(Boolean),
+      description: m.description,
+      play: `/movies/${m.id}?watch=1`,
+      info: `/movies/${m.id}`,
+    };
+  } else if (shows.length) {
+    const a = shows[day % shows.length];
+    item = {
+      title: a.title,
+      image: coverSrc(a.banner ?? a.cover, 1280),
+      kicker: "Anime of the day",
+      facts: [`${a.sub} episodes`],
+      description: "",
+      play: `/anime/${a.id}`,
+      info: `/anime/${a.id}`,
+    };
+  }
+  return item ? <Billboard item={item} /> : null;
+}
+
+async function MovieShelf({
+  title,
+  category,
+}: {
+  title: string;
+  category: MovieCategory;
+}) {
+  await connection();
+  const items = await browseMovies(category, 1)
+    .then((r) => r.items)
+    .catch(() => []);
+  if (!items.length) return null;
+  return (
+    <Shelf title={title} href={`/movies?category=${category}`}>
+      {items.slice(0, 16).map((movie) => (
+        <ShelfItem key={movie.id}>
+          <MovieCard movie={movie} />
+        </ShelfItem>
+      ))}
+    </Shelf>
+  );
+}
+
+async function AnimeShelf({
+  title,
+  category,
+}: {
+  title: string;
+  category: string;
+}) {
+  await connection();
+  const items = await browseAnime("", category, 1)
+    .then((r) => r.items)
+    .catch(() => []);
+  if (!items.length) return null;
+  return (
+    <Shelf title={title} href={`/anime?category=${category}`}>
+      {items.slice(0, 16).map((anime) => (
+        <ShelfItem key={anime.id}>
+          <AnimeCard anime={anime} />
+        </ShelfItem>
+      ))}
+    </Shelf>
+  );
 }
 
 async function TopCharts() {
@@ -99,7 +180,7 @@ async function TopCharts() {
   const columns: (typeof series)[] = [];
   for (let i = 0; i < series.length; i += 3) columns.push(series.slice(i, i + 3));
   return (
-    <Shelf title="Top Charts" href="/series">
+    <Shelf title="Top Manhwa" href="/series">
       {columns.map((col, c) => (
         <ShelfItem key={c} className="w-[calc(100vw-56px)] max-w-[380px] sm:w-[360px]">
           <ol>

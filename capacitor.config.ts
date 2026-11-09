@@ -2,12 +2,12 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 /**
  * Native shell for Android (and iOS on a Mac). Scraping and image processing need a Node
- * server, so the app opens a bundled connect screen (mobile/www) that remembers your Manhwa
+ * server, so the app opens a bundled connect screen (mobile/www) that remembers your Kairo
  * server and loads it full screen.
  */
 const config: CapacitorConfig = {
   appId: "com.jethin.manhwa",
-  appName: "Manhwa",
+  appName: "Kairo",
   webDir: "mobile/www",
   // Lets the web app detect the native shell and its version (see NativeServerLink, AppUpdate).
   appendUserAgent: `ManhwaApp/${process.env.APP_VERSION ?? "0.0.0"}`,

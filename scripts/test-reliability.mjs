@@ -133,6 +133,8 @@ function frameHarness() {
       react,
       "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "fragment" },
       "./toast": { toast() {} },
+      "./MediaSheet": { MediaSheet: () => null },
+      "./Icons": { ChevronLeft: () => null },
       "@/lib/movie-library": {},
       "@/lib/movie-providers": {
         decodeMovieEvent: (_provider, data) => data,
@@ -172,7 +174,6 @@ function frameHarness() {
     options: { startAt: 0 },
     timeout: 20,
     command: null,
-    isolate: true,
     onEvent: (event) => {
       if (event.event === "error") errors.push(event);
     },

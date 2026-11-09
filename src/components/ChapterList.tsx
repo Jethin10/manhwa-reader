@@ -15,12 +15,14 @@ import {
   deleteDownloads,
   queueDownloads,
   retryDownload,
+  resumeDownload,
   useDownloads,
   type DownloadJob,
 } from "@/lib/downloads";
 import { toast } from "@/lib/toast";
 import { ExternalIcon, SearchIcon } from "./Icons";
 import { TimeAgo } from "./TimeAgo";
+import { MediaSheet } from "./MediaSheet";
 
 const PAGE = 150;
 type Filter = "all" | "unread" | "downloaded";
@@ -80,14 +82,25 @@ export function ChapterList({
 
   // Unread, oldest first: what "download next" should fetch.
   const unreadAhead = useMemo(
-    () => [...readable].reverse().filter((c) => !read.has(readKey(c))),
-    [readable, read],
+    () =>
+      [...readable]
+        .reverse()
+        .filter(
+          (c) => !read.has(readKey(c)) && !saved[c.id] && !jobById.has(c.id),
+        ),
+    [readable, read, saved, jobById],
   );
-  const download = (list: Chapter[]) =>
-    queueDownloads(
+  const download = (list: Chapter[]) => {
+    const count = queueDownloads(
       series,
       list.map((c) => ({ id: c.id, number: c.number, title: c.title })),
     );
+    if (count)
+      toast(
+        `${count} ${count === 1 ? "chapter" : "chapters"} added to downloads`,
+        { action: { label: "View", href: "/downloads" } },
+      );
+  };
 
   const toggle = (id: string) =>
     setSelected((s) => {
@@ -138,15 +151,16 @@ export function ChapterList({
                 onClick={() => setMenu((m) => !m)}
                 aria-expanded={menu}
                 aria-label="Download chapters"
-                className="grid size-9 place-items-center rounded-full text-accent transition hover:bg-fill"
+                className="flex min-h-11 items-center gap-2 rounded-full bg-fill px-3 text-sm font-medium text-accent transition hover:bg-fill-2"
               >
                 <DownloadGlyph className="size-[19px]" />
+                Download
               </button>
               <button
                 onClick={() =>
                   setSelected((s) => (s ? null : new Set<string>()))
                 }
-                className="t-footnote h-9 rounded-full px-3 font-semibold text-accent transition hover:bg-fill"
+                className="t-footnote min-h-11 rounded-full px-3 font-semibold text-accent transition hover:bg-fill"
               >
                 {selected ? "Cancel" : "Select"}
               </button>
@@ -159,7 +173,15 @@ export function ChapterList({
                 ["Next 5 unread", unreadAhead.slice(0, 5)],
                 ["Next 10 unread", unreadAhead.slice(0, 10)],
                 [`All unread (${unreadAhead.length})`, unreadAhead],
-                [`All chapters (${readable.length})`, [...readable].reverse()],
+                [
+                  "All remaining chapters",
+                  [...readable]
+                    .reverse()
+                    .filter(
+                      (chapter) =>
+                        !saved[chapter.id] && !jobById.has(chapter.id),
+                    ),
+                ],
               ]}
               onPick={(list) => {
                 download(list);
@@ -203,8 +225,14 @@ export function ChapterList({
         {(
           [
             ["all", "All"],
-            ["unread", `Unread${chapters.length ? ` · ${unreadCount(readable, read)}` : ""}`],
-            ["downloaded", `Downloaded${downloadedCount ? ` · ${downloadedCount}` : ""}`],
+            [
+              "unread",
+              `Unread${chapters.length ? ` · ${unreadCount(readable, read)}` : ""}`,
+            ],
+            [
+              "downloaded",
+              `Downloaded${downloadedCount ? ` · ${downloadedCount}` : ""}`,
+            ],
           ] as const
         ).map(([v, text]) => (
           <button
@@ -285,7 +313,9 @@ export function ChapterList({
         <SelectionBar
           count={picked.length}
           onAll={() =>
-            setSelected(new Set(filtered.filter((c) => !c.externalUrl).map((c) => c.id)))
+            setSelected(
+              new Set(filtered.filter((c) => !c.externalUrl).map((c) => c.id)),
+            )
           }
           onRead={() => {
             mark(picked.map(readKey), true);
@@ -314,10 +344,14 @@ export function ChapterList({
           onDelete={
             picked.some((c) => saved[c.id])
               ? () => {
-                  const ids = picked.filter((c) => saved[c.id]).map((c) => c.id);
+                  const ids = picked
+                    .filter((c) => saved[c.id])
+                    .map((c) => c.id);
                   void deleteDownloads(ids);
                   toast(
-                    ids.length === 1 ? "Download deleted" : `${ids.length} downloads deleted`,
+                    ids.length === 1
+                      ? "Download deleted"
+                      : `${ids.length} downloads deleted`,
                   );
                   done();
                 }
@@ -361,7 +395,12 @@ function Row({
   onToggle: () => void;
   onDownload: () => void;
 }) {
-  const press = useRef<{ timer?: ReturnType<typeof setTimeout>; fired: boolean; x: number; y: number }>({
+  const press = useRef<{
+    timer?: ReturnType<typeof setTimeout>;
+    fired: boolean;
+    x: number;
+    y: number;
+  }>({
     fired: false,
     x: 0,
     y: 0,
@@ -379,8 +418,18 @@ function Row({
           }`}
         >
           {selected && (
-            <svg viewBox="0 0 24 24" className="size-3.5 text-white" fill="none" stroke="currentColor" strokeWidth={3.5}>
-              <path d="m5 12.5 4.5 4.5L19 7.5" strokeLinecap="round" strokeLinejoin="round" />
+            <svg
+              viewBox="0 0 24 24"
+              className="size-3.5 text-white"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={3.5}
+            >
+              <path
+                d="m5 12.5 4.5 4.5L19 7.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
           )}
         </span>
@@ -434,7 +483,8 @@ function Row({
     },
     onPointerMove: (e: React.PointerEvent) => {
       const p = press.current;
-      if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > 8) clearTimeout(p.timer);
+      if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > 8)
+        clearTimeout(p.timer);
     },
     onPointerUp: () => clearTimeout(press.current.timer),
     onPointerCancel: () => clearTimeout(press.current.timer),
@@ -517,6 +567,16 @@ export function DownloadButton({
   const base =
     "grid size-11 shrink-0 place-items-center rounded-full transition active:scale-90";
   if (job) {
+    if (job.state === "paused")
+      return (
+        <button
+          onClick={() => resumeDownload(job.id)}
+          aria-label={`Resume download of ${label}`}
+          className={`${base} text-accent`}
+        >
+          <PlaySmall />
+        </button>
+      );
     const pct = job.total ? job.done / job.total : 0;
     if (job.state === "failed")
       return (
@@ -526,8 +586,18 @@ export function DownloadButton({
           title={job.error}
           className={`${base} text-[#ff453a]`}
         >
-          <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path d="M4 12a8 8 0 1 0 2.3-5.7M4 4v4h4" strokeLinecap="round" strokeLinejoin="round" />
+          <svg
+            viewBox="0 0 24 24"
+            className="size-5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              d="M4 12a8 8 0 1 0 2.3-5.7M4 4v4h4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </button>
       );
@@ -538,7 +608,15 @@ export function DownloadButton({
         className={`${base} text-accent`}
       >
         <svg viewBox="0 0 24 24" className="size-6 -rotate-90">
-          <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeOpacity={0.2} strokeWidth={2.5} />
+          <circle
+            cx="12"
+            cy="12"
+            r="9"
+            fill="none"
+            stroke="currentColor"
+            strokeOpacity={0.2}
+            strokeWidth={2.5}
+          />
           {job.state === "downloading" && job.total > 0 ? (
             <circle
               cx="12"
@@ -563,7 +641,15 @@ export function DownloadButton({
               className="origin-center animate-spin"
             />
           )}
-          <rect x="9.5" y="9.5" width="5" height="5" rx="1" fill="currentColor" className="rotate-90 origin-center" />
+          <rect
+            x="9.5"
+            y="9.5"
+            width="5"
+            height="5"
+            rx="1"
+            fill="currentColor"
+            className="rotate-90 origin-center"
+          />
         </svg>
       </button>
     );
@@ -572,12 +658,26 @@ export function DownloadButton({
     return (
       <button
         onClick={() => (confirm ? onDelete() : setConfirm(true))}
-        aria-label={confirm ? `Delete download of ${label}` : `Downloaded ${label}. Tap again to delete`}
+        aria-label={
+          confirm
+            ? `Delete download of ${label}`
+            : `Downloaded ${label}. Tap again to delete`
+        }
         className={`${base} ${confirm ? "bg-[#ff453a]/15 text-[#ff453a]" : "text-success"}`}
       >
         {confirm ? (
-          <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13" strokeLinecap="round" strokeLinejoin="round" />
+          <svg
+            viewBox="0 0 24 24"
+            className="size-5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         ) : (
           <svg viewBox="0 0 24 24" className="size-[22px]" fill="currentColor">
@@ -597,19 +697,43 @@ export function DownloadButton({
   );
 }
 
-export function DownloadGlyph({ className = "size-5" }: { className?: string }) {
+export function DownloadGlyph({
+  className = "size-5",
+}: {
+  className?: string;
+}) {
   return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth={2}>
-      <path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14" strokeLinecap="round" strokeLinejoin="round" />
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
+      <path
+        d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
 
 function SortGlyph({ asc }: { asc: boolean }) {
   return (
-    <svg viewBox="0 0 24 24" className="size-3.5" fill="none" stroke="currentColor" strokeWidth={2.2}>
+    <svg
+      viewBox="0 0 24 24"
+      className="size-3.5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.2}
+    >
       <path
-        d={asc ? "M8 19V5m0 0L4 9m4-4 4 4M16 5v14m0 0-4-4m4 4 4-4" : "M8 5v14m0 0-4-4m4 4 4-4M16 19V5m0 0-4 4m4-4 4 4"}
+        d={
+          asc
+            ? "M8 19V5m0 0L4 9m4-4 4 4M16 5v14m0 0-4-4m4 4 4-4"
+            : "M8 5v14m0 0-4-4m4 4 4-4M16 19V5m0 0-4 4m4-4 4 4"
+        }
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -626,38 +750,59 @@ function DownloadMenu({
   onPick: (list: Chapter[]) => void;
   onClose: () => void;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const away = (e: PointerEvent) => {
-      if (!ref.current?.contains(e.target as Node)) onClose();
-    };
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("pointerdown", away);
-    document.addEventListener("keydown", esc);
-    return () => {
-      document.removeEventListener("pointerdown", away);
-      document.removeEventListener("keydown", esc);
-    };
-  }, [onClose]);
+  const [choice, setChoice] = useState(0);
+  const list = options[choice]?.[1] ?? [];
   return (
-    <div
-      ref={ref}
-      role="menu"
-      className="sheet-in glass absolute top-11 right-0 z-30 w-60 overflow-hidden rounded-[14px] py-1 shadow-2xl ring-1 ring-white/10"
-    >
-      <p className="t-caption px-4 pt-2 pb-1 text-secondary">Download for offline</p>
-      {options.map(([text, list]) => (
-        <button
-          key={text}
-          role="menuitem"
-          disabled={!list.length}
-          onClick={() => onPick(list)}
-          className="t-callout block w-full px-4 py-2.5 text-left transition hover:bg-white/[0.06] disabled:opacity-35"
-        >
-          {text}
-        </button>
-      ))}
-    </div>
+    <MediaSheet title="Download chapters" onClose={onClose}>
+      <p className="t-sub text-secondary">
+        Choose how much to save. Chapters already downloaded or queued are
+        skipped.
+      </p>
+      <fieldset className="grouped">
+        <legend className="sr-only">Chapters to save</legend>
+        {options.map(([text, chapters], index) => (
+          <label
+            key={text}
+            className="row-divider flex min-h-14 cursor-pointer items-center gap-3 px-4 py-3"
+          >
+            <input
+              type="radio"
+              name="chapter-download-scope"
+              checked={choice === index}
+              disabled={!chapters.length}
+              onChange={() => setChoice(index)}
+              className="size-5 accent-[var(--color-accent)]"
+            />
+            <span className="flex-1 text-sm">
+              {text.replace(/ \(\d+\)$/, "")}
+            </span>
+            <span className="text-sm text-secondary">{chapters.length}</span>
+          </label>
+        ))}
+      </fieldset>
+      <p className="t-footnote text-secondary">
+        Keep the app running. You can pause and resume the queue in Downloads;
+        completed pages are kept.
+      </p>
+      <button
+        className="btn btn-primary w-full"
+        disabled={!list.length}
+        onClick={() => onPick(list)}
+      >
+        Download {list.length} {list.length === 1 ? "chapter" : "chapters"}
+      </button>
+      <Link href="/downloads" className="btn btn-gray w-full">
+        Manage downloads
+      </Link>
+    </MediaSheet>
+  );
+}
+
+function PlaySmall() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-5" fill="currentColor" aria-hidden>
+      <path d="M8 4v16l12-8z" />
+    </svg>
   );
 }
 
@@ -670,7 +815,9 @@ function QueueBanner({
 }) {
   const active = jobs.find((j) => j.state === "downloading");
   const failed = jobs.filter((j) => j.state === "failed").length;
-  const pct = active?.total ? Math.round((active.done / active.total) * 100) : 0;
+  const pct = active?.total
+    ? Math.round((active.done / active.total) * 100)
+    : 0;
   return (
     <div className="grouped mb-3 flex items-center gap-3 px-4 py-3">
       <span className="size-4 shrink-0 animate-spin rounded-full border-2 border-accent/25 border-t-accent" />
@@ -691,7 +838,10 @@ function QueueBanner({
       <Link href="/downloads" className="t-footnote font-semibold text-accent">
         View
       </Link>
-      <button onClick={onCancel} className="t-footnote font-semibold text-secondary">
+      <button
+        onClick={onCancel}
+        className="t-footnote font-semibold text-secondary"
+      >
         Cancel
       </button>
     </div>
@@ -728,10 +878,16 @@ function SelectionBar({
             {count ? `${count} selected` : "Tap chapters to select"}
           </p>
           <div className="flex gap-3">
-            <button onClick={onAll} className="t-footnote font-semibold text-accent">
+            <button
+              onClick={onAll}
+              className="t-footnote font-semibold text-accent"
+            >
               Select all
             </button>
-            <button onClick={onCancel} className="t-footnote font-semibold text-secondary">
+            <button
+              onClick={onCancel}
+              className="t-footnote font-semibold text-secondary"
+            >
               Done
             </button>
           </div>
@@ -769,7 +925,13 @@ function SelectionBar({
 
 function Glyph({ d }: { d: string }) {
   return (
-    <svg viewBox="0 0 24 24" className="size-[22px]" fill="none" stroke="currentColor" strokeWidth={2}>
+    <svg
+      viewBox="0 0 24 24"
+      className="size-[22px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
       <path d={d} strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );

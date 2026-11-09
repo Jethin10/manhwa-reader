@@ -9,11 +9,15 @@ import {
   type MoviePlaybackOptions,
   type MoviePlayerEvent,
 } from "@/lib/movie-providers";
+import { MediaSheet } from "./MediaSheet";
+import { ChevronLeft } from "./Icons";
 import {
   getMovieHistory,
   getMoviePreferences,
   saveMovieProgress,
 } from "@/lib/movie-library";
+const FRAME_WIDTH = 720;
+
 type PlayerCommand = {
   id: number;
   name: "play" | "pause" | "seek" | "setVolume";
@@ -46,7 +50,7 @@ export default function MoviePlayer({
       : (providers[0]?.id ?? "");
   });
   const [attempt, setAttempt] = useState(0),
-    [theater, setTheater] = useState(false),
+    [sources, setSources] = useState(false),
     [notice, setNotice] = useState("");
   const [command, setCommand] = useState<PlayerCommand | null>(null);
   const [failed, setFailed] = useState<string[]>([]);
@@ -171,6 +175,12 @@ export default function MoviePlayer({
       flush();
     };
   }, [movie, selected]);
+  useEffect(() => {
+    window.history.pushState(window.history.state, "", window.location.href);
+    const back = () => onClose();
+    window.addEventListener("popstate", back);
+    return () => window.removeEventListener("popstate", back);
+  }, [onClose]);
   if (!provider)
     return (
       <div className="rounded-2xl bg-card p-6 sm:p-8">
@@ -193,122 +203,111 @@ export default function MoviePlayer({
   return (
     <section
       ref={container}
-      className={
-        theater
-          ? "fixed inset-0 z-50 overflow-auto bg-black px-3 pt-[max(12px,var(--safe-top))] pb-[max(12px,var(--safe-bottom))] sm:px-6"
-          : "-mx-5 border-y border-hairline bg-black p-4 sm:mx-0 sm:rounded-2xl sm:border sm:p-5"
-      }
+      className="movie-immersive fixed inset-0 z-50 flex flex-col bg-black"
       aria-label="Movie player"
     >
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <div className="min-w-0">
+      <header className="flex shrink-0 items-center gap-2 px-2 pt-[max(8px,var(--safe-top))] pb-2">
+        <button
+          onClick={() => window.history.back()}
+          aria-label="Close player"
+          className="grid size-11 shrink-0 place-items-center rounded-full text-white transition hover:bg-white/15"
+        >
+          <ChevronLeft className="size-6" />
+        </button>
+        <div className="min-w-0 flex-1">
           <h2 className="t-headline truncate">{movie.title}</h2>
-          <p className="t-footnote mt-0.5 text-secondary">
-            {provider.name}
-            {startAt > 0 && provider.progress
-              ? `, resuming from ${Math.floor(startAt / 60)} min`
-              : ""}
-          </p>
+          {startAt > 0 && provider.progress && (
+            <p className="t-caption text-secondary">
+              Resuming from {Math.floor(startAt / 60)} min
+            </p>
+          )}
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setTheater((v) => !v)}
-            className="btn btn-gray"
-          >
-            {theater ? "Exit theater" : "Theater"}
-          </button>
-          <button
-            onClick={() => {
-              void container.current
-                ?.requestFullscreen?.()
-                .catch(() =>
-                  setNotice(
-                    "Fullscreen isn't available here. Use Theater instead.",
-                  ),
-                );
-            }}
-            className="btn btn-gray"
-          >
-            Full screen
-          </button>
-          <button
-            onClick={onClose}
-            aria-label="Close player"
-            title="Close player"
-            className="grid size-11 place-items-center rounded-full bg-fill transition-colors hover:bg-fill-2"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              aria-hidden
-              className="size-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2.5}
-              strokeLinecap="round"
-            >
-              <path d="M6 6l12 12M18 6 6 18" />
-            </svg>
-          </button>
-        </div>
-      </div>
-      <div className="mt-4">
+        <button
+          onClick={() => setSources(true)}
+          className="t-footnote min-h-11 rounded-full px-3 font-semibold text-white transition hover:bg-white/15"
+        >
+          Sources
+        </button>
+        <button
+          onClick={() => {
+            const stage =
+              container.current?.querySelector<HTMLElement>(".movie-stage");
+            void stage
+              ?.requestFullscreen?.()
+              .then(() =>
+                (
+                  screen.orientation as ScreenOrientation & {
+                    lock?: (o: string) => Promise<void>;
+                  }
+                ).lock?.("landscape"),
+              )
+              .catch(() => {});
+          }}
+          aria-label="Full screen"
+          className="grid size-11 shrink-0 place-items-center rounded-full text-white transition hover:bg-white/15"
+        >
+          <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4" />
+          </svg>
+        </button>
+      </header>
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center pb-[var(--safe-bottom)]">
         <MovieFrame
           key={`${movie.id}|${provider.id}|${attempt}`}
           movie={movie}
           provider={provider}
           options={options}
-          isolate={prefs.isolatePlayer}
           command={command}
           timeout={prefs.timeout}
           onEvent={receive}
         />
+        {notice && (
+          <p role="status" className="t-footnote mt-3 max-w-xl px-4 text-center text-secondary">
+            {notice}
+          </p>
+        )}
       </div>
-      {notice && (
-        <p role="status" className="t-footnote mt-3 rounded-xl bg-fill px-3 py-2.5">
-          {notice}
-        </p>
-      )}
-      <div
-        role="group"
-        aria-label="Change provider"
-        className="mt-4 grid gap-2 border-t border-hairline pt-4 sm:flex sm:flex-wrap sm:items-center"
-      >
-        <label className="t-footnote flex items-center gap-3 text-secondary">
-          Provider
-          <select
-            aria-label="Movie playback provider"
-            value={selected}
-            onChange={(e) => {
-              setNotice("");
-              switchTo(e.target.value);
-            }}
-            className="field min-w-0 flex-1 sm:w-52 sm:flex-none"
-          >
+      {sources && (
+        <MediaSheet title="Sources" onClose={() => setSources(false)}>
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Change source">
             {providers.map((p) => (
-              <option key={p.id} value={p.id}>
+              <button
+                key={p.id}
+                aria-pressed={selected === p.id}
+                onClick={() => {
+                  setNotice("");
+                  switchTo(p.id);
+                  setSources(false);
+                }}
+                className={`min-h-11 rounded-full px-4 text-sm font-medium transition ${selected === p.id ? "bg-white text-black" : "bg-fill text-label/85 hover:bg-fill-2"}`}
+              >
                 {p.name}
-                {failed.includes(p.id) ? " · reported error" : ""}
-              </option>
+                {failed.includes(p.id) ? " · failed" : ""}
+              </button>
             ))}
-          </select>
-        </label>
-        <div className="grid grid-cols-[1fr_auto] gap-2 sm:flex">
-          <button onClick={() => next()} className="btn btn-tinted">
-            Try next provider
-          </button>
-          <button
-            onClick={() => {
-              setFailed((ids) => ids.filter((id) => id !== selected));
-              switchTo(selected);
-              setNotice("Reloading this provider.");
-            }}
-            className="btn btn-gray"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-      <details className="disclosure mt-3">
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                next();
+                setSources(false);
+              }}
+              className="btn btn-primary flex-1"
+            >
+              Try next source
+            </button>
+            <button
+              onClick={() => {
+                setFailed((ids) => ids.filter((id) => id !== selected));
+                switchTo(selected);
+                setSources(false);
+              }}
+              className="btn btn-gray"
+            >
+              Reload
+            </button>
+          </div>
+      <details className="disclosure">
         <summary className="t-footnote text-secondary">
           More options and playback help
         </summary>
@@ -330,14 +329,6 @@ export default function MoviePlayer({
             >
               Start over
             </button>
-            <a
-              href={provider.url(movie, options)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-gray"
-            >
-              Open in new tab
-            </a>
           </div>
           {provider.progress === "cinesrc" && (
             <div
@@ -433,13 +424,15 @@ export default function MoviePlayer({
               These providers expose embedded players, not downloadable video
               files, so offline movie downloads aren’t available. Use the
               player’s own settings for audio language, speed, subtitles and
-              quality. Popup blocking is optional in playback settings; some
-              providers reject blocked popups or sandboxed frames. If a player
-              stays blank or buffers, try the next provider.
+              quality. Popups and redirects are always blocked, and a player that
+              navigates away is put back. Some providers refuse to run this way.
+              If a player stays blank or buffers, try the next provider.
             </p>
           </div>
         </div>
       </details>
+        </MediaSheet>
+      )}
     </section>
   );
 }
@@ -451,21 +444,39 @@ function MovieFrame({
   timeout,
   onEvent,
   command,
-  isolate,
 }: {
   movie: Movie;
   provider: MovieProvider;
   options: MoviePlaybackOptions;
   timeout: number;
   command: PlayerCommand | null;
-  isolate: boolean;
   onEvent: (event: MoviePlayerEvent) => void;
 }) {
   const iframe = useRef<HTMLIFrameElement>(null);
   const [src] = useState(() => provider.url(movie, options));
-  const [status, setStatus] = useState("Opening player…"),
+  const [status, setStatus] = useState(""),
     [waiting, setWaiting] = useState(true);
   const hasPlayed = useRef(false);
+  // A frame's load event fires again only when the frame itself navigated: an ad taking over.
+  const loads = useRef(0);
+  const stage = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const el = stage.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) =>
+      setBox({
+        width: entry.contentRect.width,
+        height: entry.contentRect.height,
+      }),
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  // Providers switch to a cramped stacked layout in a phone-width frame. Lay the frame out
+  // at a desktop width and shrink the result, which keeps their normal one-row controls.
+  const scale =
+    box.width > 0 && box.width < FRAME_WIDTH ? box.width / FRAME_WIDTH : 1;
   useEffect(() => {
     if (provider.progress !== "cinesrc" || !command) return;
     iframe.current?.contentWindow?.postMessage(
@@ -522,7 +533,7 @@ function MovieFrame({
       ) {
         hasPlayed.current = true;
         setWaiting(false);
-        setStatus("Playback confirmed");
+        setStatus("");
         clearTimeout(timer);
       } else if (decoded.event === "error") {
         active = false;
@@ -532,10 +543,8 @@ function MovieFrame({
         setStatus("The provider reported a playback error.");
       } else if (decoded.event === "pause") {
         active = false;
-        setStatus("Paused");
       } else if (decoded.event === "ended") {
         active = false;
-        setStatus("Finished");
       }
       onEvent(decoded);
     };
@@ -548,7 +557,10 @@ function MovieFrame({
   }, [provider, movie, timeout, onEvent, options.startAt]);
   return (
     <>
-      <div className="relative aspect-video overflow-hidden rounded-xl bg-card">
+      <div
+        ref={stage}
+        className="movie-stage relative aspect-video w-[min(100vw,calc((100dvh-72px)*16/9))] shrink-0 overflow-hidden bg-black"
+      >
         <iframe
           ref={iframe}
           src={src}
@@ -556,16 +568,34 @@ function MovieFrame({
           allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
           allowFullScreen
           referrerPolicy="no-referrer"
-          sandbox={
-            isolate
-              ? "allow-scripts allow-same-origin allow-forms allow-presentation"
+          // Never add allow-popups or allow-top-navigation: they let ads leave the app.
+          sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
+          className="absolute top-0 left-0 size-full border-0"
+          style={
+            scale < 1
+              ? {
+                  width: FRAME_WIDTH,
+                  height: box.height / scale,
+                  transform: `scale(${scale})`,
+                  transformOrigin: "0 0",
+                }
               : undefined
           }
-          className="absolute inset-0 size-full border-0"
-          onLoad={() => {
+          onLoad={(e) => {
             setWaiting(false);
-            if (!hasPlayed.current)
-              setStatus("Player frame loaded. Press play inside it to start.");
+            loads.current += 1;
+            if (loads.current > 1) {
+              if (loads.current > 4) {
+                setStatus(
+                  "This provider keeps redirecting. Try the next provider.",
+                );
+                e.currentTarget.removeAttribute("src");
+                onEvent({ event: "error" });
+                return;
+              }
+              e.currentTarget.src = src;
+              setStatus("Blocked a redirect and restored the player.");
+            }
           }}
           onError={() => {
             setWaiting(false);
@@ -581,9 +611,11 @@ function MovieFrame({
           </div>
         )}
       </div>
-      <p role="status" className="t-footnote mt-2 text-secondary">
-        {status}
-      </p>
+      {status && (
+        <p role="status" className="t-footnote mt-3 max-w-xl px-4 text-center text-secondary">
+          {status}
+        </p>
+      )}
     </>
   );
 }

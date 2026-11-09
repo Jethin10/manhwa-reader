@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { MovieBrowse } from "@/components/MovieBrowse";
+import { MovieHome } from "@/components/MovieHome";
 import { MovieRetry } from "@/components/MovieRetry";
 import { SearchBox } from "@/components/SearchBox";
 import { browseMovies, searchMovies } from "@/lib/movies";
@@ -33,6 +34,7 @@ async function Content({
     ? (sp.category as MovieCategory)
     : "popular";
   const page = Math.max(1, Math.min(10000, Math.floor(Number(sp.page) || 1)));
+  if (!q && !sp.category && page === 1) return <MovieHome />;
   const result = await (
     q
       ? searchMovies(q).then((r) => ({ ...r, hasNext: false }))

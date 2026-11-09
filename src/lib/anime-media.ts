@@ -192,7 +192,7 @@ export async function getAnimeMedia(
   };
   if (!data.src)
     throw new Error("No playable stream was supplied. Try another server.");
-  const deliveryServers = await probeEdges(data.src);
+  const src = streamUrl(data.src);
   const skip: NonNullable<PlaybackMedia["skip"]> = {};
   for (const key of ["intro", "outro"] as const) {
     const range = data.skip?.[key];
@@ -207,8 +207,8 @@ export async function getAnimeMedia(
       skip[key] = range;
   }
   return {
-    src: deliveryServers[0]?.src ?? streamUrl(data.src),
-    servers: deliveryServers,
+    src,
+    servers: [{ id: "original", label: "Original CDN", src, latencyMs: 0 }],
     skip,
     poster: data.poster,
     // Newer releases put every language in one stream; this names the one this version is for.
@@ -229,6 +229,18 @@ export async function getAnimeMedia(
       }
     }),
   };
+}
+
+/** Optional alternatives are discovered only after the player starts. */
+export async function getAnimeDelivery(
+  episode: string,
+  language: "sub" | "dub",
+) {
+  "use cache";
+  cacheLife({ stale: 60, revalidate: 120, expire: 240 });
+  const media = await getAnimeMedia(episode, language);
+  const raw = new URL(media.src, "https://app.invalid").searchParams.get("u");
+  return raw ? probeEdges(raw) : [];
 }
 
 export function rewritePlaylist(text: string, base: string, edge = "") {

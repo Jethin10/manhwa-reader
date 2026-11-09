@@ -13,7 +13,7 @@
 
 Ten fixed-origin embed adapters are registered in `src/lib/movie-providers.ts`. TMDB-only adapters require a numeric mapping from movie metadata. The player list updates when a mapping arrives without remounting an already selected provider.
 
-Only one iframe mounts at a time, after the user chooses Watch movie or resumes from history. The default iframe behavior matches the existing anime player for compatibility. An optional popup-blocking sandbox restricts scripts, top navigation and downloads, but some providers explicitly reject sandboxed frames. Provider advertising may open windows in compatible mode or show overlays inside the frame. An external-player link is available when framing fails.
+Only one iframe mounts at a time, after the user chooses Watch movie or resumes from history. Every frame is sandboxed without popup or top-navigation rights; this is not a setting, and older saved preferences are ignored. If the frame itself navigates (a second load event), the player is restored, and after repeated attempts the provider is treated as failed. Some providers reject sandboxed frames. Provider advertising may still appear inside a frame, and parent CSS cannot remove it. There is deliberately no open-in-new-tab link, since that would leave the sandbox.
 
 An iframe load event only confirms that a document loaded. CineSrc, VidLink and VidSrc.sh have separate event decoders. Events must come from both the exact configured origin and the active iframe window. Progress values and supplied movie IDs are validated. Unknown statuses do not confirm playback.
 
