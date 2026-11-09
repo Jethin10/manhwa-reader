@@ -244,8 +244,7 @@ export function ReaderOptions({
                 "Double-page spreads",
                 "Two pages side by side. Wide pages stay alone.",
               )}
-              {s.spreads &&
-                check("spreadOffset", "Show the first page alone")}
+              {s.spreads && check("spreadOffset", "Show the first page alone")}
               {check(
                 "splitWide",
                 "Split wide pages",
@@ -471,6 +470,12 @@ export function PlaybackOptions({
         label="Pause when the tab is hidden"
         checked={s.pauseWhenHidden}
         onChange={(pauseWhenHidden) => onChange({ pauseWhenHidden })}
+      />
+      <Check
+        label="Use less mobile data"
+        hint="Smaller buffers and no next-episode warming. Your browser's data saver is also respected."
+        checked={s.dataSaver}
+        onChange={(dataSaver) => onChange({ dataSaver })}
       />
       <p className="text-xs leading-5 text-secondary">
         Intro skipping appears only when the source supplies valid timestamps.

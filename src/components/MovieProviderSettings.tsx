@@ -39,11 +39,6 @@ const TOGGLES = [
   ["autoplay", "Autoplay when allowed", ""],
   ["autoFallback", "Try next provider on reported errors", ""],
   ["rememberProgress", "Remember playback progress", ""],
-  [
-    "isolatePlayer",
-    "Block provider popups",
-    "Some providers refuse to play with this on. With it off, provider ads may open new windows.",
-  ],
 ] as const;
 
 export function MovieProviderSettings({

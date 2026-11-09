@@ -4,14 +4,27 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type { Anime, AnimeServer, Episode } from "@/lib/anime";
-import { lastWatch, markWatched, savedWatch, saveWatch, useWatched } from "./AnimeLibrary";
-import { CheckIcon, ChevronLeft, ChevronRight, PlayIcon } from "./Icons";
-import { clearPlaybackCache, loadMedia, loadServers } from "@/lib/anime-client";
+import {
+  lastWatch,
+  markWatched,
+  savedWatch,
+  saveWatch,
+  useWatched,
+} from "./AnimeLibrary";
+import { CheckIcon, PlayIcon } from "./Icons";
+import {
+  clearPlaybackCache,
+  loadDelivery,
+  loadMedia,
+  loadServers,
+} from "@/lib/anime-client";
+import { saveDataEnabled } from "@/lib/playback-policy";
 import type { PlaybackMedia } from "@/lib/anime-playback";
 import { CollectionPicker } from "./CollectionPicker";
-import { Check, PlaybackOptions } from "./PreferenceControls";
+import { Check } from "./PreferenceControls";
 import { usePreferences, updatePreferences } from "@/lib/preferences";
 import { coverSrc } from "@/lib/images";
+import VideoDownloadButton from "./VideoDownloadSheet";
 const AdaptiveVideo = dynamic(() => import("./AdaptiveVideo"), {
   ssr: false,
   loading: () => (
@@ -125,7 +138,8 @@ export function AnimePlayer({
   const mediaError =
     nativeError || (prepared?.key === mediaKey ? prepared.error : "");
   useEffect(() => {
-    if (!direct || !episodeId) return;
+    if (!direct || !episodeId || (!started && saveDataEnabled(prefs.dataSaver)))
+      return;
     let active = true;
     void loadMedia(episodeId, language)
       .then((media) => {
@@ -138,7 +152,43 @@ export function AnimePlayer({
     return () => {
       active = false;
     };
-  }, [direct, episodeId, language, retry]);
+  }, [direct, episodeId, language, retry, started, prefs.dataSaver]);
+  useEffect(() => {
+    const id = setTimeout(() => {
+      void import("./AdaptiveVideo");
+      void import("hls.js");
+    }, 300);
+    return () => clearTimeout(id);
+  }, []);
+  const readySrc = media?.src;
+  useEffect(() => {
+    if (readySrc && !saveDataEnabled(prefs.dataSaver))
+      void fetch(readySrc).catch(() => {});
+  }, [readySrc, prefs.dataSaver]);
+  const probed = useRef("");
+  const warmed = useRef("");
+  function discoverDelivery() {
+    if (probed.current === mediaKey || saveDataEnabled(prefs.dataSaver)) return;
+    probed.current = mediaKey;
+    void loadDelivery(episodeId, language)
+      .then((alternatives) => {
+        setPrepared((current) =>
+          current?.key === mediaKey && current.media
+            ? {
+                ...current,
+                media: {
+                  ...current.media,
+                  servers: [
+                    current.media.servers[0],
+                    ...alternatives.filter((s) => s.src !== current.media!.src),
+                  ].filter((s): s is PlaybackMedia["servers"][number] => !!s),
+                },
+              }
+            : current,
+        );
+      })
+      .catch(() => {});
+  }
   useEffect(() => {
     if (!episode || !started || !selected) return;
     saveWatch({ anime, episodeId, episodeNumber: episode.number, language });
@@ -176,7 +226,8 @@ export function AnimePlayer({
   const onProgress = useCallback(
     (time: number, duration: number) => {
       // Past the end credits counts as watched.
-      if (duration > 0 && time / duration > 0.85) markWatched(anime.id, episodeId);
+      if (duration > 0 && time / duration > 0.85)
+        markWatched(anime.id, episodeId);
       if (episode)
         saveWatch({
           anime,
@@ -190,6 +241,7 @@ export function AnimePlayer({
     [anime, episode, episodeId, language],
   );
   function warmNext() {
+    if (saveDataEnabled(prefs.dataSaver) || document.hidden) return;
     const next = episodes[index + 1];
     if (next)
       void loadServers(next.id)
@@ -222,41 +274,19 @@ export function AnimePlayer({
     (filter ? 0 : episodeWindow) * 50 + 50,
   );
   const button =
-    "inline-flex items-center gap-1 rounded-full bg-fill px-4 py-2 text-xs font-medium transition hover:bg-fill-2 disabled:cursor-not-allowed disabled:opacity-30";
+    "inline-flex min-h-11 items-center gap-1 rounded-full bg-fill px-4 py-2 text-sm font-medium transition hover:bg-fill-2 disabled:cursor-not-allowed disabled:opacity-30";
   return (
     <div
-      className={`mx-auto px-4 py-6 sm:px-8 ${theater ? "max-w-none" : "max-w-[1500px]"}`}
+      className={`mx-auto pb-6 sm:px-8 sm:pt-6 ${theater ? "max-w-none" : "max-w-[1500px]"}`}
     >
-      <header className="flex items-center gap-3">
-        <Link
-          href="/anime"
-          aria-label="Back to anime"
-          className="grid size-10 shrink-0 place-items-center rounded-full bg-fill text-label/90 transition hover:bg-fill-2"
-        >
-          <ChevronLeft className="size-5" />
-        </Link>
-        <div className="min-w-0 flex-1">
-          <h1 className="display truncate text-[20px] leading-tight font-bold sm:text-2xl">
-            {anime.title}
-          </h1>
-          <p className="t-caption mt-0.5 text-secondary">
-            {episodes.length} episodes · {anime.sub} sub · {anime.dub} dub
-          </p>
-        </div>
-        <a
-          href="#series-watch-order"
-          className="shrink-0 rounded-full bg-fill px-3.5 py-2 text-xs font-medium text-label/90 transition hover:bg-fill-2"
-        >
-          Seasons
-        </a>
-      </header>
       <div
-        className={`mt-5 grid gap-6 ${theater ? "" : "xl:grid-cols-[minmax(0,1fr)_310px]"}`}
+        className={`grid gap-5 sm:gap-6 ${theater ? "" : "xl:grid-cols-[minmax(0,1fr)_310px]"}`}
       >
-        <div className="min-w-0">
+        <div className="contents xl:block xl:min-w-0">
           <div
             ref={player}
-            className="relative flex aspect-video items-center justify-center overflow-hidden rounded-2xl bg-[#080808] ring-1 ring-white/10"
+            data-player
+            className="sticky top-[calc(52px+var(--safe-top))] z-30 flex aspect-video items-center justify-center overflow-hidden bg-[#080808] sm:relative sm:top-0 sm:rounded-2xl sm:ring-1 sm:ring-white/10"
           >
             {loading ? (
               <div role="status" className="text-sm text-secondary">
@@ -336,20 +366,44 @@ export function AnimePlayer({
                   media={media}
                   title={`${anime.title} episode ${episode?.number} ${language}`}
                   onError={onNativeError}
-                  onProgress={onProgress}
+                  onProgress={(time, duration) => {
+                    onProgress(time, duration);
+                    // Near the end, get the next episode ready so it starts at once.
+                    if (
+                      duration > 0 &&
+                      time / duration > 0.8 &&
+                      warmed.current !== episodeId
+                    ) {
+                      warmed.current = episodeId;
+                      warmNext();
+                    }
+                  }}
+                  onPlaybackReady={discoverDelivery}
                   startTime={
                     savedWatch(anime.id, episodeId)?.language === language
                       ? (savedWatch(anime.id, episodeId)?.time ?? 0)
                       : 0
                   }
-                  onEnded={() => {
-                    if (autoNext && episodes[index + 1])
-                      chooseEpisode(episodes[index + 1].id);
-                  }}
+                  onEnded={() => {}}
+                  onPrevious={
+                    index > 0
+                      ? () => chooseEpisode(episodes[index - 1].id)
+                      : undefined
+                  }
+                  onNext={
+                    episodes[index + 1]
+                      ? () => chooseEpisode(episodes[index + 1].id)
+                      : undefined
+                  }
+                  nextLabel={
+                    episodes[index + 1]
+                      ? `Episode ${episodes[index + 1].number}`
+                      : undefined
+                  }
                 />
               ) : (
                 <p role="status" className="text-xs text-secondary">
-                  Finding the fastest delivery server...
+                  Preparing your stream…
                 </p>
               )
             ) : (
@@ -361,158 +415,146 @@ export function AnimePlayer({
                 allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
                 allowFullScreen
                 referrerPolicy="origin"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
               />
             )}
           </div>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-secondary">
-              {episode
-                ? episode.title === `Episode ${episode.number}`
-                  ? episode.title
-                  : `Episode ${episode.number} · ${episode.title}`
-                : "No episodes available"}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                className={button}
-                disabled={index <= 0}
-                onClick={() => chooseEpisode(episodes[index - 1].id)}
+          <div className="min-w-0 px-4 sm:px-0 xl:pt-4">
+            <div className="flex items-start gap-3">
+              <div className="min-w-0 flex-1">
+                <h1 className="display text-[20px] leading-tight font-bold sm:text-2xl">
+                  {anime.title}
+                </h1>
+                <p className="t-footnote mt-1 text-secondary">
+                  {episode
+                    ? episode.title === `Episode ${episode.number}`
+                      ? episode.title
+                      : `Episode ${episode.number} · ${episode.title}`
+                    : "No episodes available"}
+                </p>
+              </div>
+              <a
+                href="#series-watch-order"
+                className="shrink-0 rounded-full bg-fill px-3.5 py-2 text-xs font-medium text-label/90 transition hover:bg-fill-2"
               >
-                <ChevronLeft className="size-3.5" /> Previous
-              </button>
-              <button
-                className={button}
-                disabled={index < 0 || index >= episodes.length - 1}
-                onPointerEnter={warmNext}
-                onFocus={warmNext}
-                onClick={() => chooseEpisode(episodes[index + 1].id)}
-              >
-                Next <ChevronRight className="size-3.5" />
-              </button>
-              <button className={button} onClick={() => setTheater((t) => !t)}>
-                {theater ? "Default view" : "Theater"}
-              </button>
-              <button
-                className={button}
-                onClick={() =>
-                  player.current?.requestFullscreen().catch(() => {})
-                }
-              >
-                Fullscreen
-              </button>
+                Seasons
+              </a>
             </div>
-          </div>
-          <section
-            aria-label="Playback options"
-            className="mt-5 overflow-hidden rounded-2xl bg-card ring-1 ring-white/[0.06]"
-          >
-            <div className="flex flex-wrap items-center gap-3 border-b border-hairline p-4">
-              <span className="mr-2 text-xs text-secondary">Audio</span>
-              {(["sub", "dub"] as const).map((l) => (
-                <button
-                  key={l}
-                  aria-pressed={language === l}
-                  onClick={() => {
-                    setLanguage(l);
-                    setStarted(false);
-                    setNativeError("");
-                    setOriginalPlayer(false);
-                  }}
-                  className={`rounded-full px-5 py-2 text-sm font-medium transition ${language === l ? "bg-white text-black" : "bg-fill text-secondary hover:text-white"}`}
-                >
-                  {l === "sub" ? "Subtitled" : "English dub"}
-                </button>
-              ))}
-            </div>
-            <div className="flex flex-wrap items-center gap-3 p-4">
-              <span className="mr-2 text-xs text-secondary">Server</span>
-              {available.map((s) => (
-                <button
-                  key={s.name}
-                  aria-pressed={selected?.name === s.name}
-                  onClick={() => {
-                    setServerName(s.name);
-                    setStarted(false);
-                    setNativeError("");
-                    setOriginalPlayer(false);
-                  }}
-                  disabled={s.reachable === false}
-                  className={`rounded-lg px-4 py-2 text-sm ${selected?.name === s.name ? "bg-accent text-white" : "bg-fill text-secondary"}`}
-                >
-                  {s.name}
-                  {s.name === "ZokoAnime" ? " · Adaptive HD" : ""}
-                  {s.reachable === false
-                    ? " · Unavailable"
-                    : s.latencyMs
-                      ? ` · ${s.latencyMs}ms`
-                      : ""}
-                </button>
-              ))}
-              {!loading && !available.length && (
-                <span className="text-xs text-secondary">
-                  Unavailable for this audio
-                </span>
-              )}
-              <button
-                disabled={checking}
-                onClick={checkServers}
-                className="text-xs text-secondary hover:text-white"
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <div
+                role="group"
+                aria-label="Audio"
+                className="inline-flex rounded-full bg-fill p-1"
               >
-                {checking ? "Checking..." : "Check availability"}
-              </button>
-              <button
-                onClick={reload}
-                className="ml-auto text-xs text-secondary hover:text-white"
-              >
-                Reload servers
-              </button>
-            </div>
-          </section>
-          <div className="mt-4">
-            <CollectionPicker
-              item={{
-                id: anime.id,
-                media: "anime",
-                title: anime.title,
-                cover: anime.cover,
-                type: "Anime",
-              }}
-            />
-          </div>
-          <details className="mt-4 rounded-2xl bg-card p-5">
-            <summary className="cursor-pointer text-sm font-semibold">
-              Player preferences & shortcuts
-            </summary>
-            <div className="mt-5">
-              <PlaybackOptions
-                settings={prefs}
-                onChange={(patch) => {
-                  updatePreferences(patch);
-                  if (patch.audio) setLanguage(patch.audio);
+                {(["sub", "dub"] as const).map((l) => (
+                  <button
+                    key={l}
+                    aria-pressed={language === l}
+                    onClick={() => {
+                      setLanguage(l);
+                      setStarted(false);
+                      setNativeError("");
+                      setOriginalPlayer(false);
+                    }}
+                    className={`min-h-9 rounded-full px-4 text-sm font-medium transition ${language === l ? "bg-white text-black" : "text-secondary hover:text-white"}`}
+                  >
+                    {l === "sub" ? "Sub" : "Dub"}
+                  </button>
+                ))}
+              </div>
+              <VideoDownloadButton
+                anime={anime}
+                episodes={episodes}
+                currentEpisode={episodeId}
+                audio={language}
+              />
+              <CollectionPicker
+                item={{
+                  id: anime.id,
+                  media: "anime",
+                  title: anime.title,
+                  cover: anime.cover,
+                  type: "Anime",
                 }}
               />
-              <p className="mt-5 text-xs leading-6 text-secondary">
-                Space / K: play or pause. J / L or arrows: seek. M: mute. F:
-                fullscreen. C: subtitles. P: picture in picture. These controls
-                apply to the integrated player.
-              </p>
+              <div className="hidden xl:block">
+                <button
+                  className={button}
+                  onClick={() => setTheater((t) => !t)}
+                >
+                  {theater ? "Default view" : "Theater"}
+                </button>
+              </div>
             </div>
-          </details>
-          <div className="mt-3">
-            <Check
-              label="Auto-play next episode"
-              checked={autoNext}
-              onChange={setAutoNext}
-            />
+            <details className="disclosure mt-4 rounded-2xl bg-card px-4 py-3 ring-1 ring-white/[0.06]">
+              <summary className="cursor-pointer text-sm font-medium">
+                Not playing? Change server
+              </summary>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {available.map((s) => (
+                  <button
+                    key={s.name}
+                    aria-pressed={selected?.name === s.name}
+                    onClick={() => {
+                      setServerName(s.name);
+                      setStarted(false);
+                      setNativeError("");
+                      setOriginalPlayer(false);
+                    }}
+                    disabled={s.reachable === false}
+                    className={`min-h-10 rounded-full px-4 text-sm font-medium disabled:opacity-40 ${selected?.name === s.name ? "bg-accent text-white" : "bg-fill text-secondary"}`}
+                  >
+                    {s.name === "ZokoAnime" ? "Main player" : `Backup · ${s.name}`}
+                    {s.reachable === false ? " · Down" : ""}
+                  </button>
+                ))}
+                {!loading && !available.length && (
+                  <span className="text-xs text-secondary">
+                    Unavailable for this audio
+                  </span>
+                )}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-4">
+                <button
+                  disabled={checking}
+                  onClick={checkServers}
+                  className="min-h-9 text-xs font-medium text-accent"
+                >
+                  {checking ? "Checking..." : "Check which servers work"}
+                </button>
+                <button
+                  onClick={reload}
+                  className="min-h-9 text-xs font-medium text-accent"
+                >
+                  Reload
+                </button>
+                <Link
+                  href="/settings"
+                  className="inline-flex min-h-9 items-center text-xs font-medium text-accent"
+                >
+                  Player preferences
+                </Link>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-secondary">
+                Backup players come from other sites and can show their own ads.
+              </p>
+            </details>
           </div>
         </div>
-        <aside className="flex max-h-[680px] min-h-64 flex-col overflow-hidden rounded-2xl bg-card ring-1 ring-white/[0.06]">
+        <aside className="mx-4 flex min-h-64 flex-col overflow-hidden rounded-2xl bg-card ring-1 ring-white/[0.06] sm:mx-0 xl:max-h-[680px]">
           <div className="border-b border-hairline p-5">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold">Episodes</h2>
               <span className="text-xs text-secondary">
                 {episodes.length} available
               </span>
+            </div>
+            <div className="mt-2">
+              <Check
+                label="Auto-play next episode"
+                checked={autoNext}
+                onChange={setAutoNext}
+              />
             </div>
             <input
               value={filter}
@@ -544,7 +586,7 @@ export function AnimePlayer({
               </select>
             )}
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+          <div className="min-h-0 flex-1 p-2 xl:overflow-y-auto">
             {visibleEpisodes.map((e) => (
               <button
                 key={e.id}
@@ -555,7 +597,11 @@ export function AnimePlayer({
                 <span
                   className={`grid size-9 shrink-0 place-items-center rounded-lg text-xs tabular-nums ${e.id === episodeId ? "bg-accent text-white" : "bg-fill"}`}
                 >
-                  {e.id === episodeId ? <PlayIcon className="ml-0.5 size-3.5" /> : e.number}
+                  {e.id === episodeId ? (
+                    <PlayIcon className="ml-0.5 size-3.5" />
+                  ) : (
+                    e.number
+                  )}
                 </span>
                 <span className="line-clamp-2 min-w-0 flex-1 text-xs leading-relaxed">
                   {e.title}
@@ -571,7 +617,7 @@ export function AnimePlayer({
           </div>
         </aside>
       </div>
-      <section className="mt-10 flex max-w-4xl gap-6 border-t border-hairline pt-8">
+      <section className="mx-4 mt-10 flex max-w-4xl gap-6 border-t border-hairline pt-8 sm:mx-0">
         <img
           src={coverSrc(anime.cover, 320)}
           alt={anime.title}

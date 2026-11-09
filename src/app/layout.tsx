@@ -11,10 +11,10 @@ import "./globals.css";
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: { default: "Manhwa — Read in stunning quality", template: "%s · Manhwa" },
-  description: "Read manhwa, manga and manhua online in the highest quality.",
-  applicationName: "Manhwa",
-  appleWebApp: { capable: true, title: "Manhwa", statusBarStyle: "black-translucent" },
+  title: { default: "Kairo — Anime, movies and manhwa", template: "%s · Kairo" },
+  description: "Watch anime and movies, and read manhwa and manga, in one place.",
+  applicationName: "Kairo",
+  appleWebApp: { capable: true, title: "Kairo", statusBarStyle: "black-translucent" },
   formatDetection: { telephone: false },
   icons: {
     icon: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],

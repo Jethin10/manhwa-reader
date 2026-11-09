@@ -3,9 +3,9 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: "Manhwa — Read in stunning quality",
-    short_name: "Manhwa",
-    description: "Manhwa, manga, manhua and anime from every source, in the best available quality.",
+    name: "Kairo — Anime, movies and manhwa",
+    short_name: "Kairo",
+    description: "Watch anime and movies, and read manhwa and manga, in one place.",
     start_url: "/",
     scope: "/",
     display: "standalone",

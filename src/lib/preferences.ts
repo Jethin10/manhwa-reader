@@ -12,6 +12,7 @@ export type Preferences = {
   subtitleColor: "white" | "yellow";
   subtitleBackground: boolean;
   buffer: "balanced" | "generous";
+  dataSaver: boolean;
   reduceMotion: boolean;
   accent: "violet" | "blue" | "rose";
 };
@@ -27,6 +28,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   subtitleColor: "white",
   subtitleBackground: true,
   buffer: "balanced",
+  dataSaver: false,
   reduceMotion: false,
   accent: "blue",
 };
@@ -51,6 +53,7 @@ export function normalizePreferences(raw: unknown): Preferences {
     subtitleColor: v.subtitleColor === "yellow" ? "yellow" : "white",
     subtitleBackground: v.subtitleBackground !== false,
     buffer: v.buffer === "generous" ? "generous" : "balanced",
+    dataSaver: v.dataSaver === true,
     reduceMotion: v.reduceMotion === true,
     accent:
       v.accent === "violet" ? "violet" : v.accent === "rose" ? "rose" : "blue",

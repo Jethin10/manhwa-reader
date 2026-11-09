@@ -1,4 +1,4 @@
-import { getAnimeMedia } from "@/lib/anime-media";
+import { getAnimeDelivery, getAnimeMedia } from "@/lib/anime-media";
 export async function GET(request: Request) {
   const p = new URL(request.url).searchParams;
   if (
@@ -11,7 +11,9 @@ export async function GET(request: Request) {
     );
   try {
     return Response.json(
-      await getAnimeMedia(p.get("episode")!, p.get("audio") as "sub" | "dub"),
+      p.get("delivery") === "1"
+        ? { servers: await getAnimeDelivery(p.get("episode")!, p.get("audio") as "sub" | "dub") }
+        : await getAnimeMedia(p.get("episode")!, p.get("audio") as "sub" | "dub"),
       { headers: { "Cache-Control": "private, max-age=60" } },
     );
   } catch (e) {
