@@ -1,6 +1,8 @@
 // CDNs that serve images to any page, with or without a Referer. These load straight from the
-// CDN, which is faster than the proxy and costs the server nothing.
-const DIRECT = [/^cdn\.asurascans\.com$/, /^(?:i\d+\.)?mangakatana\.com$/, /^images\.metahub\.space$/, /^m\.media-amazon\.com$/];
+// CDN, which is faster than the proxy and costs the server nothing. MangaDex chapter pages
+// (uploads and the at-home network nodes) allow hotlinking; PageImage already retries a
+// failed page with a cache-buster before giving up.
+const DIRECT = [/^cdn\.asurascans\.com$/, /^(?:i\d+\.)?mangakatana\.com$/, /^images\.metahub\.space$/, /^m\.media-amazon\.com$/, /^uploads\.mangadex\.org$/, /\.mangadex\.network$/];
 
 function host(url: string) {
   try {
@@ -15,10 +17,11 @@ function host(url: string) {
  * the rest go through our proxy, which MangaDex and friends require.
  */
 export function img(url: string, opts: { w?: number; hd?: boolean } = {}) {
-  if (DIRECT.some((re) => re.test(host(url)))) return url;
   // MangaDex publishes 256px and 512px cover thumbnails, so covers never need resizing here.
+  // Checked before DIRECT so covers keep using the small proxied thumbnails.
   if (opts.w && /^uploads\.mangadex\.org$/.test(host(url)) && url.includes("/covers/"))
     return `/api/img?u=${encodeURIComponent(`${url}.${opts.w <= 256 ? 256 : 512}.jpg`)}`;
+  if (DIRECT.some((re) => re.test(host(url)))) return url;
   let out = `/api/img?u=${encodeURIComponent(url)}`;
   if (opts.w) out += `&w=${opts.w}`;
   // Without server-side processing the HD copy is the original, so reuse its URL (and cache).

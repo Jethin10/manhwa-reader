@@ -8,7 +8,14 @@ const IMAGES = `images-${VERSION}`;
 const DOWNLOADS = "downloads";
 const VIDEO_DOWNLOADS = "video-downloads";
 const MAX_IMAGES = 800;
+const MAX_SHELL = 50;
 const OFFLINE_URL = "/offline";
+
+// The downloads manager (src/lib/downloads.ts) names its caches after this version.
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "mr:get-cache-version")
+    event.source?.postMessage({ type: "mr:cache-version", version: VERSION });
+});
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -52,24 +59,37 @@ async function trim(cacheName, max) {
   for (let i = 0; i < keys.length - max; i++) await cache.delete(keys[i]);
 }
 
-async function cacheFirst(request, cacheName) {
+async function cacheFirst(request, cacheName, event) {
   // Any cache will do: a downloaded page lives in DOWNLOADS, a viewed one in IMAGES.
   const hit = await caches.match(request);
   if (hit) return hit;
   const res = await fetch(request);
-  if (res.ok) {
-    const cache = await caches.open(cacheName);
-    cache.put(request, res.clone());
-    if (cacheName === IMAGES) trim(IMAGES, MAX_IMAGES);
-  }
+  if (res.ok)
+    // The response goes back now; the cache write and trim finish in the background.
+    event.waitUntil(
+      caches
+        .open(cacheName)
+        .then((cache) => cache.put(request, res.clone()))
+        .then(() =>
+          cacheName === IMAGES ? trim(IMAGES, MAX_IMAGES) : undefined,
+        )
+        .catch(() => {}),
+    );
   return res;
 }
 
-async function networkFirst(request) {
+async function networkFirst(request, event) {
   const cache = await caches.open(SHELL);
   try {
     const res = await fetch(request);
-    if (res.ok) cache.put(request, res.clone());
+    // Search results are one-off URLs; caching them would flood the shell cache.
+    if (res.ok && new URL(request.url).pathname !== "/search")
+      event.waitUntil(
+        cache
+          .put(request, res.clone())
+          .then(() => trim(SHELL, MAX_SHELL))
+          .catch(() => {}),
+      );
     return res;
   } catch {
     return (
@@ -126,12 +146,12 @@ self.addEventListener("fetch", (event) => {
   // The download manager stores pages itself.
   if (request.headers.get("x-mr-download")) return;
   if (url.pathname.startsWith("/api/img"))
-    return event.respondWith(cacheFirst(request, IMAGES));
+    return event.respondWith(cacheFirst(request, IMAGES, event));
   if (
     url.pathname.startsWith("/_next/static/") ||
     url.pathname.startsWith("/icons/")
   )
-    return event.respondWith(cacheFirst(request, STATIC));
+    return event.respondWith(cacheFirst(request, STATIC, event));
   if (request.mode === "navigate")
-    return event.respondWith(networkFirst(request));
+    return event.respondWith(networkFirst(request, event));
 });

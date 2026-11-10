@@ -35,8 +35,50 @@ export const DOWNLOAD_CACHE = "downloads";
 const META = "mr:downloads";
 const QUEUE = "mr:download-queue";
 const PAUSED = "Download paused";
-const SHELL = "shell-v2";
 const PARALLEL_PAGES = 6;
+
+/**
+ * Cache names carry the service worker's version (public/sw.js). Ask the worker for it so a
+ * version bump there can't strand the offline Downloads page here; fall back to the last
+ * known version when no worker answers (first load, before activation).
+ */
+let cacheVersion: Promise<string> | undefined;
+function swCacheVersion(): Promise<string> {
+  if (!cacheVersion)
+    cacheVersion = new Promise<string>((resolve) => {
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const onMessage = (event: MessageEvent) => {
+        const data = event.data as { type?: string; version?: string } | null;
+        if (
+          data?.type === "mr:cache-version" &&
+          typeof data.version === "string"
+        )
+          finish(data.version);
+      };
+      const finish = (version: string) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        navigator.serviceWorker?.removeEventListener("message", onMessage);
+        resolve(version);
+      };
+      try {
+        if (!("serviceWorker" in navigator)) return finish("v2");
+        navigator.serviceWorker.addEventListener("message", onMessage);
+        timer = setTimeout(() => finish("v2"), 2000);
+        navigator.serviceWorker.ready
+          .then((reg) => {
+            if (!reg.active) return finish("v2");
+            reg.active.postMessage({ type: "mr:get-cache-version" });
+          })
+          .catch(() => finish("v2"));
+      } catch {
+        finish("v2");
+      }
+    });
+  return cacheVersion;
+}
 
 let saved: Record<string, DownloadedChapter> | null = null;
 const jobs = new Map<string, DownloadJob>();
@@ -440,12 +482,13 @@ async function saveOfflineShell() {
     });
     if (!res.ok) return;
     const html = await res.clone().text();
-    const shell = await caches.open(SHELL);
+    const version = await swCacheVersion();
+    const shell = await caches.open(`shell-${version}`);
     await shell.put("/downloads", res);
     const assets = [
       ...new Set(html.match(/\/_next\/static\/[^"'\s)]+/g) ?? []),
     ];
-    const statics = await caches.open("static-v2");
+    const statics = await caches.open(`static-${version}`);
     await Promise.all(
       assets.map(async (a) => {
         if (await statics.match(a)) return;
