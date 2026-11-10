@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
@@ -28,6 +28,7 @@ const UA = "manhwa-reader/0.1 (personal reader)";
 const BROWSER_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 const CACHE_DIR = join(tmpdir(), "manhwa-reader-img");
+const CACHE_MAX_FILES = 4000;
 const CACHE_HEADERS = {
   "Cache-Control": "public, max-age=31536000, immutable",
 };
@@ -47,6 +48,32 @@ function mimeFor(path: string) {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// The disk cache has no natural eviction; bound it like the page cache in source-http.ts,
+// pruning the oldest files by mtime every so many writes.
+let cacheWrites = 0;
+function noteCacheWrite() {
+  if (++cacheWrites % 200 === 0)
+    void pruneImageCache().catch(() => {
+      // best effort
+    });
+}
+async function pruneImageCache() {
+  const names = await readdir(CACHE_DIR);
+  if (names.length <= CACHE_MAX_FILES) return;
+  const files = await Promise.all(
+    names.map(async (n) => ({
+      n,
+      t: (await stat(join(CACHE_DIR, n))).mtimeMs,
+    })),
+  );
+  files.sort((a, b) => a.t - b.t);
+  await Promise.all(
+    files
+      .slice(0, files.length - CACHE_MAX_FILES)
+      .map((f) => rm(join(CACHE_DIR, f.n), { force: true })),
+  );
+}
 const inflight = new Map<string, Promise<Buffer>>();
 const transformations = new Map<string, Promise<Buffer>>();
 
@@ -168,6 +195,7 @@ function getOriginal(target: URL, stableKey: string): Promise<Buffer> {
     writing = true;
     void mkdir(CACHE_DIR, { recursive: true })
       .then(() => writeFile(file, buf))
+      .then(() => noteCacheWrite())
       .catch(() => {})
       .finally(() => inflight.delete(stableKey));
     return buf;
@@ -289,6 +317,7 @@ export async function GET(request: Request) {
         // file is available, without making the first client wait for disk I/O.
         void mkdir(CACHE_DIR, { recursive: true })
           .then(() => writeFile(file, out))
+          .then(() => noteCacheWrite())
           .catch(() => {})
           .finally(() => transformations.delete(key));
         return out;

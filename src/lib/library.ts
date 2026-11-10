@@ -283,27 +283,62 @@ export function recordRead(entry: Omit<HistoryEntry, "at">) {
   );
 }
 
-/** Persists where the reader is inside a chapter (for resume + the progress bar on covers). */
+/**
+ * Persists where the reader is inside a chapter (for resume + the progress bar on covers).
+ *
+ * Page turns fire this constantly, and every POSITIONS write is a full-map JSON.stringify
+ * that also re-renders subscribers, so writes are coalesced: a trailing save one second
+ * after the last turn, plus a flush when the tab hides or unloads.
+ */
+const POSITIONS_DELAY = 1000;
+let pendingPositions: Record<string, number> | null = null;
+let positionsTimer: ReturnType<typeof setTimeout> | undefined;
+let positionsFlushArmed = false;
+
+function flushPositions() {
+  if (positionsTimer) {
+    clearTimeout(positionsTimer);
+    positionsTimer = undefined;
+  }
+  if (!pendingPositions) return;
+  const positions = read<Record<string, number>>(POSITIONS, {});
+  Object.assign(positions, pendingPositions);
+  pendingPositions = null;
+  const keys = Object.keys(positions);
+  for (let i = 0; i < keys.length - 300; i++) delete positions[keys[i]];
+  try {
+    localStorage.setItem(POSITIONS, JSON.stringify(positions));
+  } catch {
+    // Storage full: progress for this chapter just isn't kept.
+  }
+}
+
+function armPositionsFlush() {
+  if (positionsFlushArmed || typeof window === "undefined") return;
+  positionsFlushArmed = true;
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushPositions();
+  });
+  window.addEventListener("pagehide", flushPositions);
+}
+
 export function saveProgress(
   seriesId: string,
   chapterId: string,
   progress: number,
   page: number,
 ) {
-  const positions = read<Record<string, number>>(POSITIONS, {});
-  positions[chapterId] = page;
-  const keys = Object.keys(positions);
-  if (keys.length > 300) delete positions[keys[0]];
-  try {
-    localStorage.setItem(POSITIONS, JSON.stringify(positions));
-  } catch {
-    // Storage full: progress for this chapter just isn't kept.
-  }
+  armPositionsFlush();
+  if (!pendingPositions) pendingPositions = {};
+  pendingPositions[chapterId] = page;
+  if (positionsTimer) clearTimeout(positionsTimer);
+  positionsTimer = setTimeout(flushPositions, POSITIONS_DELAY);
   const list = read<HistoryEntry[]>(HISTORY, []);
   const entry = list.find(
     (x) => x.id === seriesId && x.chapterId === chapterId,
   );
-  if (entry) {
+  // A HISTORY rewrite re-renders its subscribers; a sub-1% nudge isn't worth that.
+  if (entry && Math.abs(progress - (entry.progress ?? 0)) >= 0.01) {
     entry.progress = progress;
     write(HISTORY, list);
   }
@@ -311,7 +346,11 @@ export function saveProgress(
 
 /** Page index the reader was last on in this chapter (0 if never opened). */
 export function getSavedPage(chapterId: string): number {
-  return read<Record<string, number>>(POSITIONS, {})[chapterId] ?? 0;
+  return (
+    pendingPositions?.[chapterId] ??
+    read<Record<string, number>>(POSITIONS, {})[chapterId] ??
+    0
+  );
 }
 
 export function useReaderSettings(seriesId?: string): ReaderSettings {
