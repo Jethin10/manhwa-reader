@@ -2,11 +2,10 @@ import "server-only";
 import { cacheLife } from "next/cache";
 import { CATALOG_CACHE } from "./cache-profiles";
 import type { BrowseOptions, Chapter, Series } from "./mangadex";
-import { astroProps, plainText, sourceFetch } from "./source-http";
+import { plainText, sourceFetch } from "./source-http";
 import { img } from "./images";
 
 const API = "https://api.asurascans.com/api";
-const SITE = "https://asurascans.com";
 type RawSeries = {
   slug: string;
   title: string;
@@ -109,19 +108,21 @@ export async function asuraDetail(id: string) {
     await sourceFetch(`${API}/series/${slugOf(id)}`)
   ).json()) as { series?: RawSeries; data?: { series?: RawSeries } };
   const series = data.series ?? data.data?.series;
-  if (!series?.slug || !series.public_url) throw new Error("Asura Scans did not return this series. Try another source.");
+  if (!series?.slug) throw new Error("Asura Scans did not return this series. Try another source.");
   return series;
 }
 export async function getAsuraSeries(id: string) {
   return mapSeries(await asuraDetail(id));
 }
+// Asura's HTML pages refuse anything but a real browser (403), so chapters and pages come
+// from its API, which serves them as JSON.
 export async function getAsuraChapters(id: string): Promise<Chapter[]> {
   "use cache";
   cacheLife("minutes");
-  const s = await asuraDetail(id);
-  const html = await (await sourceFetch(`${SITE}${s.public_url}`)).text();
-  const data = astroProps<{ chapters: RawChapter[] }>(html, "chapters");
-  return (data.chapters ?? [])
+  const data = (await (
+    await sourceFetch(`${API}/series/${slugOf(id)}/chapters`)
+  ).json()) as { data?: RawChapter[] };
+  return (data.data ?? [])
     .filter(
       (c) =>
         !c.is_premium &&
@@ -143,7 +144,7 @@ export async function getAsuraChapters(id: string): Promise<Chapter[]> {
 export async function getAsuraChapter(id: string) {
   const mangaId = id.split("~").slice(0, 2).join("~");
   const number = id.split("~")[2] ?? "";
-  // The chapter list comes from the series page, which Asura can take seconds to serve.
+  // The chapter list can take Asura a moment to serve.
   // Give it a moment; past that, open the chapter from its id while the list finishes
   // loading into the cache for next time.
   const listed = getAsuraChapters(mangaId).then(
@@ -179,22 +180,25 @@ export async function getAsuraPages(id: string) {
   cacheLife("minutes");
   const number = id.split("~")[2];
   if (!/^\d+(\.\d+)?$/.test(number)) throw new Error("Invalid chapter.");
-  // Locked (premium, early access) chapters carry no pages, which fails below.
-  const s = await asuraDetail(id);
-  const html = await (
-    await sourceFetch(`${SITE}${s.public_url}/chapter/${number}`)
-  ).text();
-  const data = astroProps<{ pages: { url: string; tiles?: number[] }[] }>(
-    html,
-    "pages",
-  );
-  if (!data.pages?.length)
+  const data = (await (
+    await sourceFetch(`${API}/series/${slugOf(id)}/chapters/${number}`)
+  ).json()) as {
+    data?: {
+      access_gate?: string;
+      chapter?: { pages?: { url: string; tiles?: number[] }[] };
+    };
+  };
+  // Locked (premium, early access) chapters come back gated or without pages.
+  if (data.data?.access_gate)
+    throw new Error("This chapter requires access on Asura Scans.");
+  const pages = data.data?.chapter?.pages ?? [];
+  if (!pages.length)
     throw new Error("Asura has no readable pages for this chapter.");
-  if (data.pages.some((p) => p.tiles?.length))
+  if (pages.some((p) => p.tiles?.length))
     throw new Error(
       "This chapter uses an unsupported image format. Choose another chapter or source.",
     );
-  return data.pages.map((p) => ({
+  return pages.map((p) => ({
     src: img(p.url),
     hd: img(p.url, { hd: true }),
   }));

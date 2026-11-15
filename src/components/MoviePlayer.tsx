@@ -44,11 +44,16 @@ type PlayerCommand = {
 const noSubscribe = () => () => {};
 const WATCHED_FINE = 20 * 60; // seconds actually watched before a source counts as a real copy
 
-function report(movie: string, provider: string, verdict: "camera" | "ok") {
+function report(
+  movie: string,
+  provider: string,
+  verdict: "camera" | "ok" | "quality",
+  height?: number,
+) {
   void fetch("/api/movies", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ movie, provider, verdict }),
+    body: JSON.stringify({ movie, provider, verdict, ...(height ? { height } : {}) }),
     keepalive: true,
   }).catch(() => {});
 }
@@ -69,7 +74,6 @@ export default function MoviePlayer({
     movieDownloadsSupported,
     () => false,
   );
-  const streams = useCaughtStreams(native);
   const saved = useMovieDownloads().find(
     (d) => d.movieId === movie.id && d.state !== "failed",
   );
@@ -114,6 +118,20 @@ export default function MoviePlayer({
       : (providers[0]?.id ?? "");
   });
   const watched = useRef({ provider: "", seconds: 0, last: 0, voted: false });
+  const streams = useCaughtStreams(native, selected);
+  // The app sees the real stream a source plays: share its best resolution, so everyone's
+  // player tries the sharpest copy first (rankProviders).
+  const reportedHeight = useRef(new Set<string>());
+  useEffect(() => {
+    const top = Math.max(
+      0,
+      ...streams.flatMap((s) => (s.variants ?? []).map((v) => v.height)),
+    );
+    const key = `${movie.id}|${selected}`;
+    if (top < 144 || reportedHeight.current.has(key)) return;
+    reportedHeight.current.add(key);
+    report(movie.id, selected, "quality", Math.min(4320, top));
+  }, [streams, movie.id, selected]);
   const [attempt, setAttempt] = useState(0),
     [sources, setSources] = useState(false),
     [notice, setNotice] = useState("");
@@ -427,6 +445,9 @@ export default function MoviePlayer({
                     : copyOf(p.id) === "real"
                       ? " · real copy"
                       : ""}
+                {copies?.providers[p.id]?.height
+                  ? ` · ${copies.providers[p.id].height}p`
+                  : ""}
               </button>
             ))}
           </div>

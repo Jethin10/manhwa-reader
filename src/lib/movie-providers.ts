@@ -215,10 +215,21 @@ export type ReleaseStatus = {
   best?: string;
 };
 /** Viewer reports per provider: when it was last called a camera copy or watched fine. */
-export type CopyReports = Record<string, { camera?: number; ok?: number }>;
+export type CopyReports = Record<
+  string,
+  { camera?: number; ok?: number; height?: number }
+>;
 export type MovieCopies = {
   release: ReleaseStatus;
-  providers: Record<string, { copy: CopyVerdict; why: string }>;
+  providers: Record<
+    string,
+    {
+      copy: CopyVerdict;
+      why: string;
+      /** Best resolution the app has seen this source stream for this movie. */
+      height?: number;
+    }
+  >;
 };
 
 /** Providers that play VidSrc.sh's copy and so share its quality label. */
@@ -248,6 +259,7 @@ export function judgeCopies(
         ? { copy: "camera", why: `VidSrc.sh labels it ${label}` }
         : { copy: "real", why: `VidSrc.sh labels it ${label}` };
     else out[id] = { copy: "unknown", why: "Not checked yet" };
+    if (r.height && release.status !== "camera") out[id].height = r.height;
   }
   return out;
 }
@@ -273,7 +285,12 @@ export function rankProviders(
         : copies?.[p.id]?.copy === "camera"
           ? 0
           : 1;
-  return [...providers].sort((a, b) => tier(b) - tier(a));
+  // Within a tier, the highest resolution measured from the stream wins.
+  return [...providers].sort(
+    (a, b) =>
+      tier(b) - tier(a) ||
+      (copies?.[b.id]?.height ?? 0) - (copies?.[a.id]?.height ?? 0),
+  );
 }
 
 const CAMERA_KEY = "mr:movie-camera-copies";

@@ -1,5 +1,6 @@
 import "server-only";
 import { cacheLife } from "next/cache";
+import { after } from "next/server";
 import { cache } from "react";
 import {
   getAllUploads,
@@ -16,6 +17,11 @@ import {
   type ProviderId,
 } from "./sources";
 import { chapterKey, sameTitle } from "./titles";
+import {
+  measureSources,
+  type CopyQuality,
+  type SourceQuality,
+} from "./page-quality";
 import { errorText } from "./format";
 
 export type SourceSummary = {
@@ -28,6 +34,8 @@ export type SourceSummary = {
   /** Chapters this source supplies to the merged list. */
   used: number;
   error?: string;
+  /** Measured from its images, compared with the other sources on the same chapters. */
+  measured?: CopyQuality;
 };
 
 const latin = (t: string) => /^[\x20-\x7e]+$/.test(t);
@@ -69,13 +77,61 @@ export async function findMirrors(id: string): Promise<string[]> {
   );
 }
 
-function rank(c: Chapter, primary: string) {
-  // Hosted pages beat links to official sites; then image quality; then the series' own source.
+/**
+ * Which copy of a chapter to open. Hosted pages beat links to official sites. Then the
+ * sharpest copy as measured from its images (src/lib/page-quality.ts); sources not yet
+ * measured fall back to their usual quality order, and a source whose pages failed goes last.
+ * The series' own source breaks ties.
+ */
+function rank(c: Chapter, primary: string, measured: SourceQuality = {}) {
+  const q = measured[providerOf(c.id)];
+  const quality = !q ? qualityOf(c.id) * 10 : q.broken ? -100 : 100 + q.score;
   return (
-    (c.externalUrl ? 0 : 100) +
-    qualityOf(c.id) * 2 +
+    (c.externalUrl ? 0 : 1_000_000) +
+    quality * 2 +
     (providerOf(c.id) === providerOf(primary) ? 1 : 0)
   );
+}
+
+/**
+ * The chapters to compare sources on: two chapter numbers that several sources carry,
+ * a little behind the newest (fresh releases are sometimes re-uploaded), each source's copy.
+ */
+function comparisonSamples(uploads: Chapter[]) {
+  const byKey = new Map<string, Map<ProviderId, string>>();
+  for (const u of uploads) {
+    const key = chapterKey(u.number);
+    if (!key || u.externalUrl) continue;
+    const copies = byKey.get(key) ?? new Map<ProviderId, string>();
+    if (!copies.has(providerOf(u.id))) copies.set(providerOf(u.id), u.id);
+    byKey.set(key, copies);
+  }
+  const shared = [...byKey.entries()]
+    .filter(([, copies]) => copies.size >= 2)
+    .sort((a, b) => (parseFloat(b[0]) || 0) - (parseFloat(a[0]) || 0));
+  const picked = shared.slice(shared.length > 6 ? 3 : 0).slice(0, 2);
+  return picked.flatMap(([, copies]) =>
+    [...copies.entries()].map(([provider, chapterId]) => ({ provider, chapterId })),
+  );
+}
+
+/** Measured source quality if it's ready quickly; otherwise it finishes in the background. */
+async function sourceQuality(id: string, uploads: Chapter[]): Promise<SourceQuality> {
+  const samples = comparisonSamples(uploads);
+  if (!samples.length) return {};
+  const job = measureSources(id, samples);
+  const quick = await Promise.race([
+    job.catch(() => ({}) as SourceQuality),
+    new Promise<null>((r) => setTimeout(() => r(null), 1500)),
+  ]);
+  if (quick) return quick;
+  // First visit to this series: rank by the usual order now, measured from the next visit.
+  try {
+    after(() => job.catch(() => {}));
+  } catch {
+    /* outside a request */
+  }
+  return {};
 }
 
 /**
@@ -120,6 +176,8 @@ export const getMergedChapters = cache(async (id: string) => {
   });
   if (lists[0].status === "rejected" && !uploads.length) throw lists[0].reason;
 
+  const measured = await sourceQuality(id, uploads);
+  for (const s of sources) s.measured = measured[s.provider];
   const best = new Map<string, Chapter>();
   for (const c of uploads) {
     // Unnumbered extras only make sense within their own source.
@@ -128,7 +186,8 @@ export const getMergedChapters = cache(async (id: string) => {
       (providerOf(c.id) === providerOf(id) ? c.id : null);
     if (!key) continue;
     const prev = best.get(key);
-    if (!prev || rank(c, id) > rank(prev, id)) best.set(key, c);
+    if (!prev || rank(c, id, measured) > rank(prev, id, measured))
+      best.set(key, c);
   }
   const chapters = [...best.values()].sort(
     (a, b) =>
@@ -141,6 +200,7 @@ export const getMergedChapters = cache(async (id: string) => {
   return {
     chapters,
     uploads,
+    measured,
     sources: sources.sort((a, b) => b.chapters - a.chapters),
   };
 });
@@ -150,10 +210,11 @@ export function versionsOf(
   uploads: Chapter[],
   number: string | null,
   primary: string,
+  measured: SourceQuality = {},
 ) {
   const key = chapterKey(number);
   if (!key) return [];
   return uploads
     .filter((u) => !u.externalUrl && chapterKey(u.number) === key)
-    .sort((a, b) => rank(b, primary) - rank(a, primary));
+    .sort((a, b) => rank(b, primary, measured) - rank(a, primary, measured));
 }
