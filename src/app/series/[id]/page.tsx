@@ -311,6 +311,11 @@ async function MergedChapters({ series }: { series: SavedSeries }) {
 async function Sources({ id }: { id: string }) {
   const merged = await getMergedChapters(id).catch(() => null);
   if (!merged) return null;
+  const sharpest = merged.sources
+    .filter((s) => s.measured && !s.measured.broken)
+    .sort((a, b) => b.measured!.score - a.measured!.score)[0];
+  const compared =
+    merged.sources.filter((s) => s.measured && !s.measured.broken).length > 1;
   return (
     <section>
       <h2 className="t-footnote mb-2 flex items-center gap-1.5 px-4 font-semibold tracking-[0.02em] text-secondary uppercase">
@@ -332,11 +337,22 @@ async function Sources({ id }: { id: string }) {
                       This page
                     </span>
                   )}
+                  {compared && sharpest?.id === s.id && (
+                    <span className="t-caption rounded-full bg-accent/15 px-1.5 font-semibold text-accent">
+                      Sharpest
+                    </span>
+                  )}
                 </span>
                 <span className="t-footnote block text-secondary">
                   {s.error
                     ? "Unavailable right now"
-                    : `${s.chapters} ${s.chapters === 1 ? "chapter" : "chapters"}${s.latest ? ` · latest ${s.latest}` : ""}`}
+                    : `${s.chapters} ${s.chapters === 1 ? "chapter" : "chapters"}${s.latest ? ` · latest ${s.latest}` : ""}${
+                        s.measured?.broken
+                          ? " · pages failing"
+                          : s.measured
+                            ? ` · ${s.measured.width}px pages`
+                            : ""
+                      }`}
                 </span>
               </span>
               {s.used > 0 && (
@@ -350,8 +366,9 @@ async function Sources({ id }: { id: string }) {
         ))}
       </ul>
       <p className="t-caption mt-2 px-4 text-tertiary">
-        Each chapter opens from the sharpest available copy. If a source fails,
-        reading continues from the next one.
+        Each chapter opens from the sharpest copy, measured from the actual
+        page images on every source. If a source fails, reading continues
+        from the next one.
       </p>
     </section>
   );

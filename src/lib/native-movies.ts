@@ -143,8 +143,11 @@ export const playMovieDownload = (id: string) => bridge()?.movieDownloadPlay(id)
 
 // ---------- streams found while a movie plays ----------
 
-/** Streams the current movie player has loaded, newest first. Empty outside the Android app. */
-export function useCaughtStreams(active: boolean): MovieStream[] {
+/**
+ * Streams the current movie player has loaded, newest first. `scope` (the source playing)
+ * starts a fresh list when it changes. Empty outside the Android app.
+ */
+export function useCaughtStreams(active: boolean, scope = ""): MovieStream[] {
   const [streams, setStreams] = useState<MovieStream[]>([]);
   useEffect(() => {
     if (!active || !bridge()) return;
@@ -162,7 +165,7 @@ export function useCaughtStreams(active: boolean): MovieStream[] {
       window.removeEventListener("mr:stream", on);
       setStreams([]);
     };
-  }, [active]);
+  }, [active, scope]);
   return streams;
 }
 

@@ -89,10 +89,12 @@ async function LoadChapter({
   // would hold the first page back, so navigation streams in when it's ready.
   const merged = withTimeout(getMergedChapters(id), 25000, "The chapter list");
   merged.catch(() => {});
-  const otherCopy = async () =>
-    versionsOf((await merged).uploads, chapter.number, id).find(
+  const otherCopy = async () => {
+    const m = await merged;
+    return versionsOf(m.uploads, chapter.number, id, m.measured).find(
       (c) => !tried.has(c.id),
     );
+  };
   const open = (copy: Chapter) =>
     redirect(
       `/series/${id}/chapter/${copy.id}?skip=${encodeURIComponent([...tried].join(","))}`,
@@ -150,8 +152,9 @@ async function LoadChapter({
       // Mirrors failed: navigate within this source alone.
       chapters: await getChapters(id).catch(() => [] as Chapter[]),
       uploads: [] as Chapter[],
+      measured: {},
     }))
-    .then(({ chapters, uploads }) => {
+    .then(({ chapters, uploads, measured }) => {
       const key = chapterKey(chapter.number);
       const same = (c: Chapter) =>
         c.id === chapterId || (key !== null && chapterKey(c.number) === key);
@@ -167,7 +170,7 @@ async function LoadChapter({
           number: c.number,
           title: c.title,
         })),
-        versions: versionsOf(uploads, chapter.number, id).map((u) => ({
+        versions: versionsOf(uploads, chapter.number, id, measured).map((u) => ({
           id: u.id,
           group:
             u.source && u.group !== u.source

@@ -71,14 +71,17 @@ export async function POST(request: Request) {
   const movie = String(body.movie ?? "");
   const provider = String(body.provider ?? "");
   const verdict = body.verdict;
+  const height = Number(body.height);
   if (
     !isMovieId(movie) ||
     !MOVIE_PROVIDERS.some((p) => p.id === provider) ||
-    (verdict !== "camera" && verdict !== "ok")
+    (verdict !== "camera" && verdict !== "ok" && verdict !== "quality") ||
+    (verdict === "quality" &&
+      !(Number.isInteger(height) && height >= 144 && height <= 4320))
   )
     return Response.json({ error: "Invalid report." }, { status: 400 });
   try {
-    await reportCopy(movie, provider, verdict);
+    await reportCopy(movie, provider, verdict, verdict === "quality" ? height : undefined);
     return Response.json({ ok: true });
   } catch {
     return Response.json(

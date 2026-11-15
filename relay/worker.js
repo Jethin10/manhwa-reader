@@ -24,7 +24,8 @@ function same(a, b) {
 
 // /copies: viewer reports about which copy a movie source plays, shared by every device.
 // Only the app server calls it (Bearer RELAY_KEY). Stored per movie as
-// { [providerId]: { camera?: ms, ok?: ms } }; the newest report for a source wins.
+// { [providerId]: { camera?: ms, ok?: ms, height?: px, heightAt?: ms } }; the newest report
+// for a source wins. `quality` reports carry the best resolution the app saw that source stream.
 const MOVIE_ID = /^tt\d{5,10}$/;
 const PROVIDER_ID = /^[a-z0-9-]{2,30}$/;
 const REPORT_TTL = 21 * 86400; // providers swap in better copies, so reports go stale
@@ -45,12 +46,17 @@ async function copies(request, env) {
     } catch {
       return Response.json({ error: "Bad body" }, { status: 400 });
     }
-    const { movie, provider, verdict } = body ?? {};
-    if (!MOVIE_ID.test(movie) || !PROVIDER_ID.test(provider) || !["camera", "ok"].includes(verdict))
+    const { movie, provider, verdict, height } = body ?? {};
+    if (!MOVIE_ID.test(movie) || !PROVIDER_ID.test(provider) || !["camera", "ok", "quality"].includes(verdict))
       return Response.json({ error: "Bad report" }, { status: 400 });
+    if (verdict === "quality" && !(Number.isInteger(height) && height >= 144 && height <= 4320))
+      return Response.json({ error: "Bad height" }, { status: 400 });
     const key = `m:${movie}`;
     const all = (await env.COPIES.get(key, "json")) ?? {};
-    all[provider] = { ...(all[provider] ?? {}), [verdict]: Date.now() };
+    all[provider] =
+      verdict === "quality"
+        ? { ...(all[provider] ?? {}), height, heightAt: Date.now() }
+        : { ...(all[provider] ?? {}), [verdict]: Date.now() };
     await env.COPIES.put(key, JSON.stringify(all), { expirationTtl: REPORT_TTL });
     return Response.json(all);
   }

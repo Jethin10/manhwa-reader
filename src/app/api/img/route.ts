@@ -6,6 +6,7 @@ import sharp from "sharp";
 import { validImageSignature } from "@/lib/image-signing";
 import { relayEnabled, relayUrl } from "@/lib/relay";
 import { taskPool, QueueFullError } from "@/lib/concurrency";
+import { imageHeaders, refererFor } from "@/lib/image-hosts";
 
 const ALLOWED = [
   /^uploads\.mangadex\.org$/,
@@ -18,15 +19,6 @@ const ALLOWED = [
   /^temp\.compsci88\.com$/,
   /^cdn\.readdetectiveconan\.com$/,
 ];
-// Hosts that refuse images without their own site as Referer.
-const REFERERS: [RegExp, string][] = [
-  [/asurascans\.com$/, "https://asurascans.com/"],
-  [/^hianime\.tr$/, "https://hianime.tr/"],
-  [/readdetectiveconan\.com$/, "https://mangapill.com/"],
-];
-const UA = "manhwa-reader/0.1 (personal reader)";
-const BROWSER_UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 const CACHE_DIR = join(tmpdir(), "manhwa-reader-img");
 // Hosts give a server a few hundred MB of temporary disk (Vercel: 512 MB). Keep the cache
 // well under that; the CDN in front holds the long-term copies anyway.
@@ -137,7 +129,7 @@ function getOriginal(target: URL, stableKey: string): Promise<Buffer> {
     const host = target.hostname.endsWith(".mangadex.network")
       ? "mangadex.network"
       : target.hostname;
-    const referer = REFERERS.find(([re]) => re.test(target.hostname))?.[1];
+    const referer = refererFor(target.hostname);
     const attemptDownload = (viaRelay: boolean) =>
       withDownload(
         host,
@@ -147,16 +139,7 @@ function getOriginal(target: URL, stableKey: string): Promise<Buffer> {
           const response = await fetch(
             viaRelay ? relayUrl(target.href, { referer, ttl: 300 }) : target,
             {
-              headers: viaRelay
-                ? {}
-                : {
-                    "User-Agent": /mangadex\.(org|network)$/.test(
-                      target.hostname,
-                    )
-                      ? UA
-                      : BROWSER_UA,
-                    ...(referer ? { Referer: referer } : {}),
-                  },
+              headers: viaRelay ? {} : imageHeaders(target),
               redirect: "error",
               signal: AbortSignal.timeout(
                 Math.min(remaining, viaRelay ? 6000 : 8000),

@@ -100,11 +100,12 @@ export async function copyReports(id: string): Promise<CopyReports> {
 export async function reportCopy(
   movie: string,
   provider: string,
-  verdict: "camera" | "ok",
+  verdict: "camera" | "ok" | "quality",
+  height?: number,
 ) {
   return relayCall({
     method: "POST",
-    body: JSON.stringify({ movie, provider, verdict }),
+    body: JSON.stringify({ movie, provider, verdict, ...(height ? { height } : {}) }),
   });
 }
 
