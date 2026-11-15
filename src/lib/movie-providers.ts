@@ -15,8 +15,9 @@ export type MovieProvider = {
   progress?: "cinesrc" | "vidlink" | "vidsrc";
   qualityPreference?: boolean;
   /**
-   * Refuses to play in a sandboxed frame. The Android app runs it unsandboxed (its native
-   * shell drops popups and keeps the app page from being navigated away); the website can't.
+   * Refuses to play in any sandboxed frame. It runs unsandboxed: in the Android app the
+   * native shell drops popups and keeps the page from being navigated away; on the website
+   * the player asks the browser to confirm before the page is left.
    */
   noSandbox?: boolean;
   note: string;
@@ -272,13 +273,9 @@ export function rankProviders(
   providers: MovieProvider[],
   copies: MovieCopies["providers"] | undefined,
   cameraCopies: string[],
-  unsandboxed = false,
 ) {
   const tier = (p: MovieProvider) =>
-    // Can't play here at all, so after everything that can.
-    p.noSandbox && !unsandboxed
-      ? -1
-      : cameraCopies.includes(p.id)
+    cameraCopies.includes(p.id)
       ? 0
       : copies?.[p.id]?.copy === "real"
         ? 2

@@ -1,6 +1,6 @@
 import "server-only";
 import { cacheLife } from "next/cache";
-import { CATALOG_CACHE } from "./cache-profiles";
+import { CATALOG_CACHE, CHAPTER_LIST_CACHE } from "./cache-profiles";
 import type { BrowseOptions, Chapter, Series } from "./mangadex";
 import { plainText, sourceFetch } from "./source-http";
 import { img } from "./images";
@@ -117,8 +117,9 @@ export async function getAsuraSeries(id: string) {
 // Asura's HTML pages refuse anything but a real browser (403), so chapters and pages come
 // from its API, which serves them as JSON.
 export async function getAsuraChapters(id: string): Promise<Chapter[]> {
-  "use cache";
-  cacheLife("minutes");
+  "use cache: remote";
+  // Shared by every server instance; see CHAPTER_LIST_CACHE.
+  cacheLife(CHAPTER_LIST_CACHE);
   const data = (await (
     await sourceFetch(`${API}/series/${slugOf(id)}/chapters`)
   ).json()) as { data?: RawChapter[] };

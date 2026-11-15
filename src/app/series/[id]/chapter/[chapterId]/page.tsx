@@ -12,6 +12,8 @@ import {
   type PageImage,
 } from "@/lib/catalog";
 import { getMergedChapters, versionsOf } from "@/lib/unified";
+import { providerOf } from "@/lib/sources";
+import type { SourceQuality } from "@/lib/page-quality";
 import { chapterKey } from "@/lib/titles";
 import { Reader, type ChapterNav } from "@/components/Reader";
 import { SourceIssue } from "@/components/SourceIssue";
@@ -170,14 +172,20 @@ async function LoadChapter({
           number: c.number,
           title: c.title,
         })),
-        versions: versionsOf(uploads, chapter.number, id, measured).map((u) => ({
-          id: u.id,
-          group:
+        versions: versionsOf(uploads, chapter.number, id, measured).map((u) => {
+          const q = (measured as SourceQuality)[providerOf(u.id)];
+          const label =
             u.source && u.group !== u.source
               ? `${u.group ?? "Unknown group"} · ${u.source}`
-              : (u.group ?? u.source ?? null),
-          pages: u.pages,
-        })),
+              : (u.group ?? u.source ?? null);
+          return {
+            id: u.id,
+            // The measured page width, so a hand-picked copy is an informed choice.
+            group:
+              label && q && !q.broken ? `${label} · ${q.width}px` : label,
+            pages: u.pages,
+          };
+        }),
         prev: prev && { id: prev.id, number: prev.number, title: prev.title },
         next: next && { id: next.id, number: next.number, title: next.title },
       };

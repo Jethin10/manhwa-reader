@@ -42,7 +42,8 @@ const latin = (t: string) => /^[\x20-\x7e]+$/.test(t);
 
 /** The same title on every other source, found by title search and matched on normalized titles. */
 export async function findMirrors(id: string): Promise<string[]> {
-  "use cache";
+  // Shared by every server instance: finding a series on five sites takes seconds.
+  "use cache: remote";
   const series = await getSeries(id);
   const queries = [series.title, ...series.altTitles.filter(latin).slice(0, 2)];
   // Every title variant is searched at once, and a slow source only loses its own match.
@@ -61,7 +62,8 @@ export async function findMirrors(id: string): Promise<string[]> {
             return hit.id;
           }),
         ),
-        8000,
+        // MangaKatana can take ~10 s from a cold server; still beats losing the source.
+        12000,
         p.name,
       ),
     ),
@@ -109,7 +111,19 @@ function comparisonSamples(uploads: Chapter[]) {
   const shared = [...byKey.entries()]
     .filter(([, copies]) => copies.size >= 2)
     .sort((a, b) => (parseFloat(b[0]) || 0) - (parseFloat(a[0]) || 0));
-  const picked = shared.slice(shared.length > 6 ? 3 : 0).slice(0, 2);
+  const settled = shared.slice(shared.length > 6 ? 3 : 0);
+  const picked = settled.slice(0, 2);
+  // Every source that shares chapters gets measured: a source missing from those two (say
+  // MangaDex with only a few chapters) adds one more chapter it shares with the others.
+  const covered = new Set(picked.flatMap(([, copies]) => [...copies.keys()]));
+  for (const [key, copies] of [...settled, ...shared]) {
+    if (picked.length >= 4) break;
+    if (picked.some(([k]) => k === key)) continue;
+    if ([...copies.keys()].some((p) => !covered.has(p))) {
+      picked.push([key, copies]);
+      for (const p of copies.keys()) covered.add(p);
+    }
+  }
   return picked.flatMap(([, copies]) =>
     [...copies.entries()].map(([provider, chapterId]) => ({ provider, chapterId })),
   );

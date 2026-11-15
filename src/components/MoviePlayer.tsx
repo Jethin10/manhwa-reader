@@ -94,9 +94,8 @@ export default function MoviePlayer({
         ),
         copies?.providers,
         openingFlags,
-        native,
       ),
-    [movie, prefs, copies, openingFlags, native],
+    [movie, prefs, copies, openingFlags],
   );
   const copyOf = useCallback(
     (id: string) =>
@@ -403,7 +402,8 @@ export default function MoviePlayer({
           options={options}
           command={command}
           timeout={prefs.timeout}
-          unsandboxed={native && !!provider.noSandbox}
+          unsandboxed={!!provider.noSandbox}
+          guardNavigation={!native && !!provider.noSandbox}
           onEvent={receive}
         />
         {notice && (
@@ -598,8 +598,9 @@ export default function MoviePlayer({
               In the Android app, Download saves the copy a provider is playing
               once it starts. Use the
               player’s own settings for audio language, speed, subtitles and
-              quality. Popups and redirects are always blocked, and a player that
-              navigates away is put back. Some providers refuse to run this way.
+              quality. Players are kept from redirecting the app, and one that
+              navigates away is put back. VidSrc refuses to run sandboxed, so on the
+              website a tap in it can open an ad tab; the Android app blocks those.
               If a player stays blank or buffers, try the next provider.
             </p>
           </div>
@@ -619,6 +620,7 @@ function MovieFrame({
   onEvent,
   command,
   unsandboxed,
+  guardNavigation,
 }: {
   movie: Movie;
   provider: MovieProvider;
@@ -626,6 +628,12 @@ function MovieFrame({
   timeout: number;
   command: PlayerCommand | null;
   unsandboxed: boolean;
+  /**
+   * On the website an unsandboxed player could take over the page after a tap (an ad
+   * redirect). Ask the browser to confirm before leaving; Kairo's own navigation is
+   * client-side and never triggers it. The Android app blocks this natively.
+   */
+  guardNavigation: boolean;
   onEvent: (event: MoviePlayerEvent) => void;
 }) {
   const iframe = useRef<HTMLIFrameElement>(null);
@@ -637,6 +645,12 @@ function MovieFrame({
   const loads = useRef(0);
   const stage = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    if (!guardNavigation) return;
+    const stay = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", stay);
+    return () => window.removeEventListener("beforeunload", stay);
+  }, [guardNavigation]);
   useEffect(() => {
     const el = stage.current;
     if (!el) return;
@@ -745,7 +759,8 @@ function MovieFrame({
           allowFullScreen
           referrerPolicy="no-referrer"
           // Never add allow-popups or allow-top-navigation: they let ads leave the app.
-          // Only the Android app runs a provider unsandboxed: MainActivity guards it there.
+          // Some providers (VidSrc) refuse every sandbox. In the app MainActivity guards them;
+          // on the website guardNavigation does.
           sandbox={
             unsandboxed
               ? undefined

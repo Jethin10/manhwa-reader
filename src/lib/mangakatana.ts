@@ -2,7 +2,7 @@ import "server-only";
 import { load, type CheerioAPI } from "cheerio";
 import type { AnyNode } from "domhandler";
 import { cacheLife } from "next/cache";
-import { CATALOG_CACHE } from "./cache-profiles";
+import { CATALOG_CACHE, CHAPTER_LIST_CACHE } from "./cache-profiles";
 import type { BrowseOptions, Chapter, Series } from "./mangadex";
 import { sourceFetch } from "./source-http";
 import { img } from "./images";
@@ -97,8 +97,9 @@ export async function browseMangaKatana(opts: BrowseOptions) {
 }
 
 async function detail(id: string) {
-  "use cache";
-  cacheLife("minutes");
+  "use cache: remote";
+  // Shared by every server instance; see CHAPTER_LIST_CACHE.
+  cacheLife(CHAPTER_LIST_CACHE);
   const n = seriesNumber(id);
   // The slug is cosmetic: any slug ending in the number opens the title.
   const { $ } = await html(`/manga/x.${n}`);
