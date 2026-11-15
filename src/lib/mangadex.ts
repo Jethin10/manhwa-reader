@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- raw MangaDex JSON is mapped into typed shapes below */
 import { cacheLife } from "next/cache";
-import { CATALOG_CACHE } from "./cache-profiles";
+import { CATALOG_CACHE, CHAPTER_LIST_CACHE } from "./cache-profiles";
 import { img } from "./images";
 
 const API = "https://api.mangadex.org";
@@ -284,8 +284,9 @@ function chapterNum(c: Chapter) {
 
 /** Every English upload, including duplicate releases of the same chapter by different groups. */
 export async function getAllUploads(mangaId: string): Promise<Chapter[]> {
-  "use cache";
-  cacheLife("minutes");
+  "use cache: remote";
+  // Shared by every server instance; see CHAPTER_LIST_CACHE.
+  cacheLife(CHAPTER_LIST_CACHE);
   const all: Chapter[] = [];
   for (let offset = 0; offset < 5000; offset += 500) {
     const res = await api<{ data: RawChapter[]; total: number }>(

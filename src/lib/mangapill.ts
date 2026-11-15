@@ -1,7 +1,7 @@
 import "server-only";
 import { load } from "cheerio";
 import { cacheLife } from "next/cache";
-import { CATALOG_CACHE } from "./cache-profiles";
+import { CATALOG_CACHE, CHAPTER_LIST_CACHE } from "./cache-profiles";
 import type { BrowseOptions, Chapter, Series } from "./mangadex";
 import { sourceFetch } from "./source-http";
 import { img } from "./images";
@@ -86,8 +86,9 @@ export async function browseMangaPill(opts: BrowseOptions) {
 }
 
 async function detail(id: string) {
-  "use cache";
-  cacheLife("minutes");
+  "use cache: remote";
+  // Shared by every server instance; see CHAPTER_LIST_CACHE.
+  cacheLife(CHAPTER_LIST_CACHE);
   const n = seriesNumber(id);
   // The slug is cosmetic: MangaPill redirects any slug to the canonical page.
   const $ = await html(`/manga/${n}/x`);

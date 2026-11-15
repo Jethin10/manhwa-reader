@@ -1,7 +1,7 @@
 import "server-only";
 import { load } from "cheerio";
 import { cacheLife } from "next/cache";
-import { CATALOG_CACHE } from "./cache-profiles";
+import { CATALOG_CACHE, CHAPTER_LIST_CACHE } from "./cache-profiles";
 import type { BrowseOptions, Chapter, Series } from "./mangadex";
 import { sourceFetch } from "./source-http";
 import { img } from "./images";
@@ -140,8 +140,9 @@ export async function getWeebCentralSeries(id: string): Promise<Series> {
 }
 
 export async function getWeebCentralChapters(id: string): Promise<Chapter[]> {
-  "use cache";
-  cacheLife("minutes");
+  "use cache: remote";
+  // Shared by every server instance; see CHAPTER_LIST_CACHE.
+  cacheLife(CHAPTER_LIST_CACHE);
   const ulid = ulidAt(id, 1, "series");
   const $ = load(await fragment(`${SITE}/series/${ulid}/full-chapter-list`));
   const chapters: Chapter[] = [];
