@@ -3,7 +3,10 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { Movie } from "@/lib/movie-types";
-import { availableProviders } from "@/lib/movie-providers";
+import {
+  availableProviders,
+  type MovieCopies,
+} from "@/lib/movie-providers";
 import { useMovieHistory, useMoviePreferences } from "@/lib/movie-library";
 import { MovieFacts, MoviePoster } from "./MovieLibrary";
 import { CollectionPicker } from "./CollectionPicker";
@@ -32,7 +35,9 @@ export function MovieDetail({
       reportedQuality?: string;
       available?: boolean;
       tmdbId?: string;
-    }>({});
+    }>({}),
+    [copies, setCopies] = useState<MovieCopies>(),
+    [copiesDone, setCopiesDone] = useState(false);
   const history = useMovieHistory().find(
     (h) => h.id === movie.id && !h.completed,
   );
@@ -45,6 +50,15 @@ export function MovieDetail({
       .then((r) => (r.ok ? r.json() : {}))
       .then(setInfo)
       .catch(() => {});
+    // Which copy each source plays: release check, VidSrc.sh's label and viewer reports.
+    fetch(`/api/movies?id=${movie.id}&copies=1`, {
+      // The player waits for this, so never long.
+      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(4000)]),
+    })
+      .then((r) => (r.ok ? r.json() : undefined))
+      .then((c) => c?.release && setCopies(c))
+      .catch(() => {})
+      .finally(() => setCopiesDone(true));
     return () => controller.abort();
   }, [movie.id]);
   const resolved = useMemo(
@@ -160,10 +174,17 @@ export function MovieDetail({
       </section>
       <div className="gutter mx-auto max-w-[1440px]">
         <div id="movie-player" className="mt-6 scroll-mt-20">
-          {watching ? (
+          {watching && !copiesDone ? (
+            <div className="skeleton aspect-video rounded-2xl">
+              <span role="status" className="sr-only">
+                Finding the best copy
+              </span>
+            </div>
+          ) : watching ? (
             <MoviePlayer
               key={movie.id}
               movie={resolved}
+              copies={copies}
               onClose={() => setWatching(false)}
             />
           ) : (
@@ -191,15 +212,20 @@ export function MovieDetail({
               <div>
                 <dt className="t-footnote font-semibold">Quality</dt>
                 <dd className="t-footnote mt-1 text-secondary">
-                  {info.reportedQuality
-                    ? `VidSrc.sh reports ${info.reportedQuality}. Actual resolution isn’t verified.`
-                    : "Depends on the provider. Choose it inside the player."}
+                  {copies?.release.status === "camera"
+                    ? "Only cinema camera recordings exist so far. A real copy usually appears after the digital release."
+                    : copies?.release.status === "real"
+                      ? `A real ${copies.release.best ? `${copies.release.best} ` : ""}copy has been released. Sources known to play it are tried first, and camera recordings last.`
+                      : info.reportedQuality
+                        ? `VidSrc.sh reports ${info.reportedQuality}. Actual resolution isn’t verified.`
+                        : "Depends on the provider. Choose it inside the player."}
                 </dd>
               </div>
               <div>
                 <dt className="t-footnote font-semibold">Downloads</dt>
                 <dd className="t-footnote mt-1 text-secondary">
-                  Not offered. These providers only stream.
+                  In the Android app: start the movie, then tap Download to
+                  save the copy that is playing.
                 </dd>
               </div>
             </dl>

@@ -4,6 +4,8 @@ import {
   movieProviderInfo,
   searchMovies,
 } from "@/lib/movies";
+import { movieCopies, reportCopy } from "@/lib/movie-copies";
+import { MOVIE_PROVIDERS } from "@/lib/movie-providers";
 import {
   isMovieId,
   MOVIE_CATEGORIES,
@@ -17,6 +19,11 @@ export async function GET(request: Request) {
     if (id) {
       if (!isMovieId(id))
         return Response.json({ error: "Invalid movie ID." }, { status: 400 });
+      if (sp.get("copies") === "1")
+        return Response.json(await movieCopies(id), {
+          // Short: a viewer's report should reach other devices quickly.
+          headers: { "Cache-Control": "public, max-age=30" },
+        });
       const result =
         sp.get("info") === "1"
           ? await movieProviderInfo(id)
@@ -48,6 +55,34 @@ export async function GET(request: Request) {
   } catch {
     return Response.json(
       { error: "Movie catalog isn't responding. Try again shortly." },
+      { status: 502 },
+    );
+  }
+}
+
+/** A viewer's report about which copy a source played: { movie, provider, verdict }. */
+export async function POST(request: Request) {
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid report." }, { status: 400 });
+  }
+  const movie = String(body.movie ?? "");
+  const provider = String(body.provider ?? "");
+  const verdict = body.verdict;
+  if (
+    !isMovieId(movie) ||
+    !MOVIE_PROVIDERS.some((p) => p.id === provider) ||
+    (verdict !== "camera" && verdict !== "ok")
+  )
+    return Response.json({ error: "Invalid report." }, { status: 400 });
+  try {
+    await reportCopy(movie, provider, verdict);
+    return Response.json({ ok: true });
+  } catch {
+    return Response.json(
+      { error: "Couldn't save the report. Try again shortly." },
       { status: 502 },
     );
   }

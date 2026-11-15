@@ -70,7 +70,10 @@ async function networkFirst(request) {
   try {
     const res = await fetch(request);
     if (res.ok) cache.put(request, res.clone());
-    return res;
+    // A suspended or crashed host (e.g. Render's 503 "Service suspended") answers,
+    // but with nothing usable: treat it like being offline so downloads still open.
+    if (res.status < 500) return res;
+    throw new Error(`server ${res.status}`);
   } catch {
     return (
       (await cache.match(request)) ??

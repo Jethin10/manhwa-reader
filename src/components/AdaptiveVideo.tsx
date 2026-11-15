@@ -320,6 +320,9 @@ export default function AdaptiveVideo({
             ...(media.audio ? { audioPreference: { name: media.audio } } : {}),
             backBufferLength: 15,
             startLevel: -1,
+            // hls.js assumes 0.5 Mbps before it has measured anything, which starts
+            // playback on the blurriest level. Assume a normal connection instead.
+            abrEwmaDefaultEstimate: dataSaver ? 1_000_000 : 8_000_000,
             // Fetch the first segment as soon as the playlist is known, before play starts.
             startFragPrefetch: true,
             // Read-ahead downloads land in the browser cache and look instant to the
@@ -343,6 +346,14 @@ export default function AdaptiveVideo({
             if (initialMode.current === "smooth")
               hls.autoLevelCapping =
                 choices.filter((l) => l.height <= 720).at(-1)?.index ?? 0;
+            else if (!dataSaver && choices.length > 1) {
+              // Open on the sharpest picture; Auto still steps down if the
+              // connection can't keep up.
+              const best = choices.reduce((a, b) =>
+                b.height > a.height ? b : a,
+              );
+              hls.startLevel = best.index;
+            }
           });
           hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (_, data) => {
             const names = data.audioTracks.map(

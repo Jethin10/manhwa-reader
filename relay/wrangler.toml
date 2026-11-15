@@ -4,3 +4,8 @@ name = "manhwa-relay"
 main = "worker.js"
 compatibility_date = "2026-10-01"
 workers_dev = true
+
+# Viewer reports about which copy each movie source plays (camera recording or real release).
+[[kv_namespaces]]
+binding = "COPIES"
+id = "6e74db80f0bb4298a6e860e47c7c9f08"

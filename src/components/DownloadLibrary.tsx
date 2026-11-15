@@ -20,12 +20,19 @@ import {
   type SavedVideo,
   type VideoJob,
 } from "@/lib/video-downloads";
+import {
+  deleteMovieDownload,
+  pauseMovieDownload,
+  playMovieDownload,
+  resumeMovieDownload,
+  type MovieDownload,
+} from "@/lib/native-movies";
 import { readKey, useReadChapters } from "@/lib/library";
 import { useWatched } from "./AnimeLibrary";
 import { Cover } from "./SeriesCard";
 import { CheckIcon, ChevronLeft, ChevronRight, PlayIcon } from "./Icons";
 
-const CATEGORIES = ["Manhwa", "Manga", "Anime"] as const;
+const CATEGORIES = ["Manhwa", "Manga", "Anime", "Movies"] as const;
 type Category = (typeof CATEGORIES)[number];
 
 type Title = {
@@ -117,12 +124,39 @@ function videoQueueItem(j: VideoJob): QueueItem {
   };
 }
 
+function movieQueueItem(m: MovieDownload): QueueItem {
+  const pct = m.total ? Math.floor((m.bytes / m.total) * 100) : 0;
+  return {
+    id: `m:${m.id}`,
+    key: `m:${m.id}`,
+    title: m.title,
+    label: m.quality,
+    state: m.state === "done" ? "downloading" : m.state,
+    done: m.total ? m.bytes : 0,
+    total: m.total,
+    note:
+      m.state === "failed"
+        ? (m.error ?? "Failed")
+        : m.state === "paused"
+          ? "Paused"
+          : m.state === "queued"
+            ? "Waiting"
+            : m.total
+              ? `${pct}% · ${formatBytes(m.bytes)} of ${formatBytes(m.total)}`
+              : `${formatBytes(m.bytes)}`,
+    pause: () => pauseMovieDownload(m.id),
+    resume: () => resumeMovieDownload(m.id),
+    cancel: () => deleteMovieDownload(m.id),
+  };
+}
+
 /** Everything saved on this device, sorted into categories like a Tachiyomi library. */
 export function DownloadLibrary({
   saved,
   jobs,
   videos,
   videoJobs,
+  movies,
   tab,
   open,
 }: {
@@ -130,12 +164,17 @@ export function DownloadLibrary({
   jobs: DownloadJob[];
   videos: Record<string, SavedVideo>;
   videoJobs: VideoJob[];
+  movies: MovieDownload[];
   tab: string | null;
   open: string | null;
 }) {
   const queue = useMemo(
-    () => [...jobs.map(chapterQueueItem), ...videoJobs.map(videoQueueItem)],
-    [jobs, videoJobs],
+    () => [
+      ...jobs.map(chapterQueueItem),
+      ...videoJobs.map(videoQueueItem),
+      ...movies.filter((m) => m.state !== "done").map(movieQueueItem),
+    ],
+    [jobs, videoJobs, movies],
   );
   const titles = useMemo(() => {
     const by = new Map<string, Title>();
@@ -175,10 +214,29 @@ export function DownloadLibrary({
       if (j.state === "failed") t.failed++;
       else t.active++;
     }
+    for (const m of movies) {
+      const t = entry(`m:${m.id}`, m.movieId, m.title, m.poster || null, "Movies");
+      if (m.state === "done") {
+        t.count = 1;
+        t.bytes = m.bytes;
+        t.at = m.finishedAt ?? m.at;
+      } else if (m.state === "failed") t.failed++;
+      else t.active++;
+    }
     return [...by.values()].sort((a, b) => b.at - a.at);
-  }, [saved, videos, jobs, videoJobs]);
+  }, [saved, videos, jobs, videoJobs, movies]);
 
   const title = open ? titles.find((t) => t.key === open) : undefined;
+  if (title?.key.startsWith("m:")) {
+    const movie = movies.find((m) => `m:${m.id}` === title.key);
+    if (movie)
+      return (
+        <MovieDownloadDetail
+          movie={movie}
+          queue={queue.filter((q) => q.key === title.key)}
+        />
+      );
+  }
   if (title)
     return title.key.startsWith("c:") ? (
       <ChapterDetail
@@ -327,6 +385,7 @@ function Overview({
 
 function Poster({ title: t }: { title: Title }) {
   const unit = t.category === "Anime" ? "episode" : "chapter";
+  const movie = t.category === "Movies";
   return (
     <Link
       href={`/downloads?open=${encodeURIComponent(t.key)}`}
@@ -357,8 +416,12 @@ function Poster({ title: t }: { title: Title }) {
       <p className="t-footnote mt-1.5 line-clamp-2 font-medium">{t.name}</p>
       <p className="t-caption mt-0.5 text-secondary">
         {t.count > 0
-          ? plural(t.count, unit)
-          : "Downloading"}
+          ? movie
+            ? formatBytes(t.bytes)
+            : plural(t.count, unit)
+          : t.failed && !t.active
+            ? "Failed"
+            : "Downloading"}
       </p>
     </Link>
   );
@@ -456,6 +519,75 @@ function QueueRow({ item: q, showTitle }: { item: QueueItem; showTitle?: boolean
         {q.state === "failed" ? "Remove" : "Cancel"}
       </button>
     </li>
+  );
+}
+
+/** A downloaded movie: plays in the app's offline player. */
+function MovieDownloadDetail({
+  movie: m,
+  queue,
+}: {
+  movie: MovieDownload;
+  queue: QueueItem[];
+}) {
+  return (
+    <div className="gutter mx-auto max-w-[760px] pt-2 pb-16 lg:pt-6">
+      <Link
+        href="/downloads?tab=movies"
+        className="t-sub -ml-1 inline-flex min-h-11 items-center gap-1 text-accent"
+      >
+        <ChevronLeft className="size-4" />
+        Movies
+      </Link>
+      <header className="mt-2 flex gap-4">
+        <Cover cover={m.poster || null} alt="" sizes="112px" className="aspect-[2/3] w-28 shrink-0" />
+        <div className="flex min-w-0 flex-1 flex-col justify-end">
+          <h1 className="t-title2 line-clamp-3">{m.title}</h1>
+          <p className="t-footnote mt-1 text-secondary">
+            {[m.year, m.quality, m.state === "done" ? formatBytes(m.bytes) : ""]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+          <Link
+            href={`/movies/${m.movieId}`}
+            prefetch={false}
+            className="t-footnote mt-1 font-medium text-accent"
+          >
+            Open movie page
+          </Link>
+        </div>
+      </header>
+      {m.state === "done" ? (
+        <>
+          <button
+            onClick={() => playMovieDownload(m.id)}
+            className="btn btn-primary mt-5 w-full gap-2"
+          >
+            <PlayIcon className="size-4" />
+            Play offline
+          </button>
+          <div className="mt-3 flex justify-end">
+            <DeleteButton
+              label={`Delete ${m.title}`}
+              onDelete={() => deleteMovieDownload(m.id)}
+              className={textDelete}
+            >
+              {(armed) => (armed ? "Tap again to delete" : "Delete download")}
+            </DeleteButton>
+          </div>
+        </>
+      ) : (
+        queue.length > 0 && (
+          <section className="grouped mt-5 overflow-hidden" aria-label="Downloading">
+            <ul>
+              {queue.map((q) => (
+                <QueueRow key={q.id} item={q} />
+              ))}
+            </ul>
+          </section>
+        )
+      )}
+    </div>
   );
 }
 

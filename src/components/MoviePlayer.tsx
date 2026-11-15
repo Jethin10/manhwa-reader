@@ -1,15 +1,32 @@
 "use client";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { Movie } from "@/lib/movie-types";
 import {
   availableProviders,
+  flagCameraCopy,
+  getCameraCopies,
+  rankProviders,
   decodeMovieEvent,
+  type MovieCopies,
   type MovieProvider,
   type MoviePlaybackOptions,
   type MoviePlayerEvent,
 } from "@/lib/movie-providers";
 import { MediaSheet } from "./MediaSheet";
+import { MovieDownloadSheet } from "./MovieDownloadSheet";
+import {
+  movieDownloadsSupported,
+  useCaughtStreams,
+  useMovieDownloads,
+} from "@/lib/native-movies";
 import { ChevronLeft } from "./Icons";
 import {
   getMovieHistory,
@@ -24,31 +41,79 @@ type PlayerCommand = {
   args: number[];
 };
 
+const noSubscribe = () => () => {};
+const WATCHED_FINE = 20 * 60; // seconds actually watched before a source counts as a real copy
+
+function report(movie: string, provider: string, verdict: "camera" | "ok") {
+  void fetch("/api/movies", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ movie, provider, verdict }),
+    keepalive: true,
+  }).catch(() => {});
+}
+
 export default function MoviePlayer({
   movie,
+  copies,
   onClose,
 }: {
   movie: Movie;
+  copies?: MovieCopies;
   onClose: () => void;
 }) {
   const [prefs] = useState(getMoviePreferences);
+  // Movie downloads exist only in the Android app (src/lib/native-movies.ts).
+  const native = useSyncExternalStore(
+    noSubscribe,
+    movieDownloadsSupported,
+    () => false,
+  );
+  const streams = useCaughtStreams(native);
+  const saved = useMovieDownloads().find(
+    (d) => d.movieId === movie.id && d.state !== "failed",
+  );
+  const [downloadOpen, setDownloadOpen] = useState(false);
+  const [cameraCopies, setCameraCopies] = useState(() =>
+    getCameraCopies(movie.id),
+  );
+  // This device's flags as of opening: flagging a source later doesn't reshuffle the list.
+  const [openingFlags] = useState(cameraCopies);
+  const onlyCamera = copies?.release.status === "camera";
   const providers = useMemo(
     () =>
-      availableProviders(
-        movie,
-        prefs.disabledProviders,
-        prefs.preferredProvider,
+      rankProviders(
+        availableProviders(
+          movie,
+          prefs.disabledProviders,
+          prefs.preferredProvider,
+        ),
+        copies?.providers,
+        openingFlags,
+        native,
       ),
-    [movie, prefs],
+    [movie, prefs, copies, openingFlags, native],
+  );
+  const copyOf = useCallback(
+    (id: string) =>
+      cameraCopies.includes(id) ? "camera" : copies?.providers[id]?.copy,
+    [cameraCopies, copies],
   );
   const [selected, setSelected] = useState(() => {
     const last = getMovieHistory().find((m) => m.id === movie.id);
+    const rank = (id: string) => {
+      const c = cameraCopies.includes(id) ? "camera" : copies?.providers[id]?.copy;
+      return c === "real" ? 2 : c === "camera" ? 0 : 1;
+    };
+    // Resume on the last source unless a better copy is known elsewhere.
     return prefs.preferredProvider === "auto" &&
       last &&
-      providers.some((p) => p.id === last.provider)
+      providers.some((p) => p.id === last.provider) &&
+      rank(last.provider) >= rank(providers[0]?.id ?? "")
       ? last.provider
       : (providers[0]?.id ?? "");
   });
+  const watched = useRef({ provider: "", seconds: 0, last: 0, voted: false });
   const [attempt, setAttempt] = useState(0),
     [sources, setSources] = useState(false),
     [notice, setNotice] = useState("");
@@ -115,6 +180,31 @@ export default function MoviePlayer({
     },
     [providers, selected, provider?.name, switchTo, failed],
   );
+  const flagCamera = useCallback(() => {
+    flagCameraCopy(movie.id, selected);
+    report(movie.id, selected, "camera");
+    const flagged = [...new Set([...cameraCopies, selected])];
+    setCameraCopies(flagged);
+    const current = providers.findIndex((p) => p.id === selected);
+    const ordered = [
+      ...providers.slice(current + 1),
+      ...providers.slice(0, current),
+    ];
+    const candidate =
+      ordered.find((p) => !failed.includes(p.id) && !flagged.includes(p.id)) ??
+      null;
+    if (candidate) {
+      setNotice(
+        `${provider?.name ?? "That source"} is skipped for this movie from now on. Trying ${candidate.name}.`,
+      );
+      switchTo(candidate.id);
+    } else
+      setNotice(
+        onlyCamera
+          ? "Every source has a camera copy. A proper copy usually appears after the digital release."
+          : "Every enabled source has been flagged. Enable more providers in playback settings.",
+      );
+  }, [movie.id, selected, cameraCopies, providers, failed, provider?.name, switchTo, onlyCamera]);
   const receive = useCallback(
     (event: MoviePlayerEvent) => {
       if (event.event === "error") {
@@ -127,6 +217,23 @@ export default function MoviePlayer({
         !position.current.observed
       )
         return;
+      // Real watching time on this source, so a resume far into the movie doesn't count.
+      if (event.time !== undefined) {
+        const w = watched.current;
+        if (w.provider !== selected)
+          Object.assign(w, { provider: selected, seconds: 0, voted: false });
+        const delta = event.time - w.last;
+        if (delta > 0 && delta < 15) w.seconds += delta;
+        w.last = event.time;
+        if (
+          w.seconds >= WATCHED_FINE &&
+          !w.voted &&
+          !cameraCopies.includes(selected)
+        ) {
+          w.voted = true;
+          report(movie.id, selected, "ok");
+        }
+      }
       position.current.observed = true;
       if (event.event === "ended") position.current.completed = true;
       else if (
@@ -155,7 +262,7 @@ export default function MoviePlayer({
         lastSave.current = Date.now();
       }
     },
-    [movie, selected, prefs.autoFallback, next],
+    [movie, selected, prefs.autoFallback, next, cameraCopies],
   );
   useEffect(() => {
     // Flush observed progress on exit. Merely loading an iframe never creates history.
@@ -216,12 +323,31 @@ export default function MoviePlayer({
         </button>
         <div className="min-w-0 flex-1">
           <h2 className="t-headline truncate">{movie.title}</h2>
-          {startAt > 0 && provider.progress && (
+          {onlyCamera ? (
             <p className="t-caption text-secondary">
-              Resuming from {Math.floor(startAt / 60)} min
+              Only a cinema camera copy is out so far
             </p>
+          ) : (
+            startAt > 0 &&
+            provider.progress && (
+              <p className="t-caption text-secondary">
+                Resuming from {Math.floor(startAt / 60)} min
+              </p>
+            )
           )}
         </div>
+        {native && (
+          <button
+            onClick={() => setDownloadOpen(true)}
+            className="t-footnote min-h-11 rounded-full px-3 font-semibold text-white transition hover:bg-white/15"
+          >
+            {saved?.state === "done"
+              ? "Downloaded"
+              : saved
+                ? `Saving ${saved.total ? Math.floor((saved.bytes / saved.total) * 100) : 0}%`
+                : "Download"}
+          </button>
+        )}
         <button
           onClick={() => setSources(true)}
           className="t-footnote min-h-11 rounded-full px-3 font-semibold text-white transition hover:bg-white/15"
@@ -259,6 +385,7 @@ export default function MoviePlayer({
           options={options}
           command={command}
           timeout={prefs.timeout}
+          unsandboxed={native && !!provider.noSandbox}
           onEvent={receive}
         />
         {notice && (
@@ -267,6 +394,16 @@ export default function MoviePlayer({
           </p>
         )}
       </div>
+      {downloadOpen && (
+        <MovieDownloadSheet
+          movie={movie}
+          streams={streams}
+          saved={saved}
+          sourceName={provider.name}
+          cameraCopy={onlyCamera || copyOf(selected) === "camera"}
+          onClose={() => setDownloadOpen(false)}
+        />
+      )}
       {sources && (
         <MediaSheet title="Sources" onClose={() => setSources(false)}>
           <div className="flex flex-wrap gap-2" role="group" aria-label="Change source">
@@ -274,6 +411,7 @@ export default function MoviePlayer({
               <button
                 key={p.id}
                 aria-pressed={selected === p.id}
+                title={copies?.providers[p.id]?.why}
                 onClick={() => {
                   setNotice("");
                   switchTo(p.id);
@@ -282,10 +420,25 @@ export default function MoviePlayer({
                 className={`min-h-11 rounded-full px-4 text-sm font-medium transition ${selected === p.id ? "bg-white text-black" : "bg-fill text-label/85 hover:bg-fill-2"}`}
               >
                 {p.name}
-                {failed.includes(p.id) ? " · failed" : ""}
+                {failed.includes(p.id)
+                  ? " · failed"
+                  : copyOf(p.id) === "camera"
+                    ? " · camera copy"
+                    : copyOf(p.id) === "real"
+                      ? " · real copy"
+                      : ""}
               </button>
             ))}
           </div>
+          <button
+            onClick={() => {
+              flagCamera();
+              setSources(false);
+            }}
+            className="btn btn-gray w-full"
+          >
+            Looks like a camera recording? Find a better copy
+          </button>
           <div className="flex gap-2">
             <button
               onClick={() => {
@@ -421,8 +574,8 @@ export default function MoviePlayer({
                 : ""}
             </p>
             <p>
-              These providers expose embedded players, not downloadable video
-              files, so offline movie downloads aren’t available. Use the
+              In the Android app, Download saves the copy a provider is playing
+              once it starts. Use the
               player’s own settings for audio language, speed, subtitles and
               quality. Popups and redirects are always blocked, and a player that
               navigates away is put back. Some providers refuse to run this way.
@@ -444,12 +597,14 @@ function MovieFrame({
   timeout,
   onEvent,
   command,
+  unsandboxed,
 }: {
   movie: Movie;
   provider: MovieProvider;
   options: MoviePlaybackOptions;
   timeout: number;
   command: PlayerCommand | null;
+  unsandboxed: boolean;
   onEvent: (event: MoviePlayerEvent) => void;
 }) {
   const iframe = useRef<HTMLIFrameElement>(null);
@@ -569,7 +724,12 @@ function MovieFrame({
           allowFullScreen
           referrerPolicy="no-referrer"
           // Never add allow-popups or allow-top-navigation: they let ads leave the app.
-          sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
+          // Only the Android app runs a provider unsandboxed: MainActivity guards it there.
+          sandbox={
+            unsandboxed
+              ? undefined
+              : "allow-scripts allow-same-origin allow-forms allow-presentation"
+          }
           className="absolute top-0 left-0 size-full border-0"
           style={
             scale < 1

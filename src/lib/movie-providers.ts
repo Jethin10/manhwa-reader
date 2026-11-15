@@ -14,6 +14,11 @@ export type MovieProvider = {
   requiresTmdb?: boolean;
   progress?: "cinesrc" | "vidlink" | "vidsrc";
   qualityPreference?: boolean;
+  /**
+   * Refuses to play in a sandboxed frame. The Android app runs it unsandboxed (its native
+   * shell drops popups and keeps the app page from being navigated away); the website can't.
+   */
+  noSandbox?: boolean;
   note: string;
   url: (movie: Movie, options: MoviePlaybackOptions) => string;
 };
@@ -64,6 +69,7 @@ export const MOVIE_PROVIDERS: MovieProvider[] = [
     name: "VidSrc.sh",
     origin: "https://vidsrc.sh",
     progress: "vidsrc",
+    noSandbox: true,
     note: "IMDb matching and reported quality. Playback quality needs confirmation in the player.",
     url: (m, o) =>
       url("https://vidsrc.sh", `/embed/movie/${m.id}`, {
@@ -102,6 +108,7 @@ export const MOVIE_PROVIDERS: MovieProvider[] = [
     id: "vidsrc-mov",
     name: "VidSrc.mov",
     origin: "https://vidsrc.mov",
+    noSandbox: true,
     note: "IMDb-based movie player with quality selection inside its controls.",
     url: (m) => url("https://vidsrc.mov", `/embed/movie/${m.id}`),
   },
@@ -180,6 +187,118 @@ export function availableProviders(
   return [...usable].sort(
     (a, b) => Number(b.id === preferred) - Number(a.id === preferred),
   );
+}
+
+/** Release labels for a copy filmed in a cinema rather than taken from the real release. */
+export function isCameraCopy(quality: string | undefined) {
+  return /\b(cam|hdcam|camrip|ts|hdts|telesync|tc|telecine)\b/i.test(
+    quality ?? "",
+  );
+}
+
+const CAMERA_RELEASE =
+  /\b(cam|camrip|hdcam|hqcam|ts|hdts|telesync|tc|hdtc|telecine|pdvd|predvd|scr|screener|dvdscr)\b/i;
+const REAL_RELEASE =
+  /\b(web-?dl|webrip|web|bluray|blu-ray|bdrip|brrip|bdremux|remux|uhd|hdtv|dvdrip|amzn|nf|dsnp|hmax|atvp)\b/i;
+/** What a public release name says about its source. */
+export function classifyRelease(name: string): "camera" | "real" | "unknown" {
+  if (CAMERA_RELEASE.test(name)) return "camera";
+  if (REAL_RELEASE.test(name)) return "real";
+  return "unknown";
+}
+
+export type CopyVerdict = "real" | "camera" | "unknown";
+/** Whether a real (digital or disc) release of the movie exists anywhere. */
+export type ReleaseStatus = {
+  status: "real" | "camera" | "none" | "unknown";
+  /** Best resolution among real releases, e.g. "4K" or "1080p". */
+  best?: string;
+};
+/** Viewer reports per provider: when it was last called a camera copy or watched fine. */
+export type CopyReports = Record<string, { camera?: number; ok?: number }>;
+export type MovieCopies = {
+  release: ReleaseStatus;
+  providers: Record<string, { copy: CopyVerdict; why: string }>;
+};
+
+/** Providers that play VidSrc.sh's copy and so share its quality label. */
+const VIDSRC_COPY = ["vidsrc-sh", "vidsrc-mov"];
+
+/**
+ * Which copy each provider is likely to play, strongest evidence first:
+ * no real release anywhere, then the latest viewer report, then VidSrc.sh's label.
+ */
+export function judgeCopies(
+  providerIds: string[],
+  release: ReleaseStatus,
+  label: string | undefined,
+  reports: CopyReports,
+): MovieCopies["providers"] {
+  const out: MovieCopies["providers"] = {};
+  for (const id of providerIds) {
+    const r = reports[id] ?? {};
+    if (release.status === "camera")
+      out[id] = { copy: "camera", why: "Only camera recordings have been released so far" };
+    else if ((r.camera ?? 0) > (r.ok ?? 0))
+      out[id] = { copy: "camera", why: "Reported as a camera recording" };
+    else if (r.ok)
+      out[id] = { copy: "real", why: "Watched without a camera-copy report" };
+    else if (label && VIDSRC_COPY.includes(id))
+      out[id] = isCameraCopy(label)
+        ? { copy: "camera", why: `VidSrc.sh labels it ${label}` }
+        : { copy: "real", why: `VidSrc.sh labels it ${label}` };
+    else out[id] = { copy: "unknown", why: "Not checked yet" };
+  }
+  return out;
+}
+
+/**
+ * Order for playback: real copies, then unchecked sources, then camera copies.
+ * Within a tier the existing order (preferred provider first) is kept.
+ */
+export function rankProviders(
+  providers: MovieProvider[],
+  copies: MovieCopies["providers"] | undefined,
+  cameraCopies: string[],
+  unsandboxed = false,
+) {
+  const tier = (p: MovieProvider) =>
+    // Can't play here at all, so after everything that can.
+    p.noSandbox && !unsandboxed
+      ? -1
+      : cameraCopies.includes(p.id)
+      ? 0
+      : copies?.[p.id]?.copy === "real"
+        ? 2
+        : copies?.[p.id]?.copy === "camera"
+          ? 0
+          : 1;
+  return [...providers].sort((a, b) => tier(b) - tier(a));
+}
+
+const CAMERA_KEY = "mr:movie-camera-copies";
+/** Providers the viewer flagged as serving a camera copy, per movie. */
+export function getCameraCopies(movieId: string): string[] {
+  try {
+    const all = JSON.parse(localStorage.getItem(CAMERA_KEY) ?? "{}");
+    const ids = all?.[movieId];
+    return Array.isArray(ids) ? ids.filter((x) => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+export function flagCameraCopy(movieId: string, providerId: string) {
+  try {
+    const all = JSON.parse(localStorage.getItem(CAMERA_KEY) ?? "{}") ?? {};
+    const ids = new Set<string>(Array.isArray(all[movieId]) ? all[movieId] : []);
+    ids.add(providerId);
+    delete all[movieId];
+    all[movieId] = [...ids];
+    // Keep the newest 200 movies.
+    const keys = Object.keys(all);
+    for (const k of keys.slice(0, Math.max(0, keys.length - 200))) delete all[k];
+    localStorage.setItem(CAMERA_KEY, JSON.stringify(all));
+  } catch {}
 }
 
 export type MoviePlayerEvent = {
