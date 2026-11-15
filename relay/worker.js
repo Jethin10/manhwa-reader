@@ -22,8 +22,44 @@ function same(a, b) {
   return diff === 0;
 }
 
+// /copies: viewer reports about which copy a movie source plays, shared by every device.
+// Only the app server calls it (Bearer RELAY_KEY). Stored per movie as
+// { [providerId]: { camera?: ms, ok?: ms } }; the newest report for a source wins.
+const MOVIE_ID = /^tt\d{5,10}$/;
+const PROVIDER_ID = /^[a-z0-9-]{2,30}$/;
+const REPORT_TTL = 21 * 86400; // providers swap in better copies, so reports go stale
+
+async function copies(request, env) {
+  const auth = request.headers.get("Authorization") ?? "";
+  if (!env.RELAY_KEY || !env.COPIES || !same(auth, `Bearer ${env.RELAY_KEY}`))
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  if (request.method === "GET") {
+    const movie = new URL(request.url).searchParams.get("movie") ?? "";
+    if (!MOVIE_ID.test(movie)) return Response.json({ error: "Bad movie" }, { status: 400 });
+    return Response.json((await env.COPIES.get(`m:${movie}`, "json")) ?? {});
+  }
+  if (request.method === "POST") {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return Response.json({ error: "Bad body" }, { status: 400 });
+    }
+    const { movie, provider, verdict } = body ?? {};
+    if (!MOVIE_ID.test(movie) || !PROVIDER_ID.test(provider) || !["camera", "ok"].includes(verdict))
+      return Response.json({ error: "Bad report" }, { status: 400 });
+    const key = `m:${movie}`;
+    const all = (await env.COPIES.get(key, "json")) ?? {};
+    all[provider] = { ...(all[provider] ?? {}), [verdict]: Date.now() };
+    await env.COPIES.put(key, JSON.stringify(all), { expirationTtl: REPORT_TTL });
+    return Response.json(all);
+  }
+  return Response.json({ error: "Method not allowed" }, { status: 405 });
+}
+
 const relay = {
   async fetch(request, env) {
+    if (new URL(request.url).pathname === "/copies") return copies(request, env);
     if (request.method === "OPTIONS")
       return new Response(null, { headers: { ...CORS, "Access-Control-Allow-Headers": "Range", "Access-Control-Max-Age": "86400" } });
     if (request.method !== "GET") return new Response("Method not allowed", { status: 405, headers: CORS });

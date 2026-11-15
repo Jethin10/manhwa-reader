@@ -3,6 +3,14 @@
 import { useSyncExternalStore } from "react";
 import type { SavedSeries } from "./library";
 import { toast } from "./toast";
+import {
+  backgroundWork,
+  backoff,
+  isTransient,
+  MAX_TRANSIENT_RETRIES,
+  onPageReturn,
+  whenResumable,
+} from "./background-work";
 
 /**
  * Chapters saved on this device for offline reading, as in Mihon. Page images go into a
@@ -28,6 +36,8 @@ export type DownloadJob = {
   done: number;
   total: number;
   error?: string;
+  /** Network or timeout failures so far; the job waits and retries instead of failing. */
+  retries?: number;
 };
 type ChapterInfo = { id: string; number: string | null; title: string | null };
 
@@ -67,20 +77,30 @@ function restoreQueue() {
           (job.title === null || typeof job.title === "string") &&
           !load()[job.id]
         ) {
+          // Only what you paused (or what failed) stays stopped; the rest carries on.
+          const state: DownloadJob["state"] =
+            job.state === "paused" || job.state === "failed" ? job.state : "queued";
           jobs.set(job.id, {
             id: job.id,
             series: job.series,
             number: job.number,
             title: job.title,
-            state: "paused",
+            state,
             done: 0,
             total: 0,
+            ...(state === "failed" && typeof job.error === "string"
+              ? { error: job.error.slice(0, 300) }
+              : {}),
           });
         }
       }
   } catch {
     /* Invalid queues never start requests. */
   }
+  if (typeof window === "undefined") return;
+  onPageReturn(() => void pump());
+  // Restored during a render; start after it.
+  setTimeout(() => void pump(), 0);
 }
 function persistQueue() {
   try {
@@ -199,6 +219,7 @@ export function retryDownload(id: string) {
   if (!job) return;
   job.state = "queued";
   job.error = undefined;
+  job.retries = 0;
   persistQueue();
   emit();
   void pump();
@@ -239,17 +260,24 @@ export async function deleteDownloads(ids: string[]) {
 }
 
 async function pump() {
-  if (running) return;
+  if (running || typeof window === "undefined") return;
   running = true;
   let finished = 0;
   try {
     for (;;) {
       const job = [...jobs.values()].find((j) => j.state === "queued");
       if (!job) break;
+      backgroundWork("chapters", "Downloading chapters");
+      await whenResumable();
+      if (job.retries)
+        await backoff(Math.min(30000, 1500 * 2 ** job.retries));
+      // Paused, cancelled or retried by hand while waiting.
+      if (job.state !== "queued" || jobs.get(job.id) !== job) continue;
       if (await download(job)) finished++;
     }
   } finally {
     running = false;
+    backgroundWork("chapters", "");
   }
   if (finished && !jobs.size)
     toast(
@@ -393,6 +421,14 @@ async function download(job: DownloadJob): Promise<boolean> {
     } else if (ctrl.signal.aborted && !workerFailure) {
       const cache = await caches.open(DOWNLOAD_CACHE);
       await Promise.all(stored.map((u) => cache.delete(u)));
+    } else if (
+      isTransient(workerFailure ?? e) &&
+      (job.retries ?? 0) < MAX_TRANSIENT_RETRIES
+    ) {
+      // The connection dropped or the app was in the background: saved pages stay, and the
+      // chapter goes back in line to continue once the page is visible and online.
+      job.retries = (job.retries ?? 0) + 1;
+      job.state = "queued";
     } else {
       job.state = "failed";
       job.error =

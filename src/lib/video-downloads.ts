@@ -2,6 +2,14 @@
 import { useSyncExternalStore } from "react";
 import { loadMedia } from "./anime-client";
 import { toast } from "./toast";
+import {
+  backgroundWork,
+  backoff,
+  isTransient,
+  MAX_TRANSIENT_RETRIES,
+  onPageReturn,
+  whenResumable,
+} from "./background-work";
 import type { PlaybackMedia } from "./anime-playback";
 import {
   VIDEO_CACHE,
@@ -31,6 +39,8 @@ export type VideoJob = {
   bytes: number;
   error?: string;
   waitingForPlayback?: boolean;
+  /** Network or timeout failures so far; the job waits and retries instead of failing. */
+  retries?: number;
 };
 export type SavedVideo = {
   id: string;
@@ -145,16 +155,21 @@ function init() {
       }
       if (Array.isArray(value.jobs))
         for (const job of value.jobs.slice(0, 200))
-          if (selection(job) && !saved[job.id])
+          if (selection(job) && !saved[job.id]) {
+            // Only what you paused (or what failed) stays stopped; the rest carries on.
+            const state: VideoJob["state"] =
+              job.state === "paused" || job.state === "failed" ? job.state : "queued";
             jobs.set(job.id, {
               ...job,
-              state: "paused",
+              state,
               done: 0,
               total: 0,
               bytes: 0,
-              error: undefined,
+              error: state === "failed" ? job.error : undefined,
               waitingForPlayback: false,
+              retries: 0,
             });
+          }
     }
   } catch {
     /* Corrupt metadata never starts network work. */
@@ -169,7 +184,20 @@ function init() {
     playbackActive = (event as CustomEvent<boolean>).detail === true;
     if (!playbackActive) for (const resolve of playbackWaiters) resolve();
   });
+  // Nobody is watching once the app is in the background: let downloads use the connection.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      playbackActive = false;
+      for (const resolve of playbackWaiters) resolve();
+    } else
+      playbackActive = [...document.querySelectorAll("video")].some(
+        (video) => !video.paused && !video.ended,
+      );
+  });
+  onPageReturn(() => void pump());
   emit();
+  // Restored during a render; start after it.
+  setTimeout(() => void pump(), 0);
 }
 function subscribe(listener: () => void) {
   init();
@@ -270,6 +298,7 @@ export function resumeVideoDownload(id: string) {
   // The aborted workers must settle before this job can restart.
   job.state = "queued";
   job.error = undefined;
+  job.retries = 0;
   persist();
   emit();
   void pump();
@@ -550,7 +579,18 @@ async function run(job: VideoJob) {
     window.dispatchEvent(new CustomEvent("mr:video-downloaded"));
   } catch (error) {
     const current = jobs.get(job.id);
-    if (current && !["paused", "queued"].includes(current.state)) {
+    if (
+      current &&
+      !["paused", "queued"].includes(current.state) &&
+      !signal.aborted &&
+      isTransient(workerError ?? error) &&
+      (current.retries ?? 0) < MAX_TRANSIENT_RETRIES
+    ) {
+      // The connection dropped or the app was in the background: saved files stay, and
+      // the episode goes back in line to continue once the page is visible and online.
+      current.retries = (current.retries ?? 0) + 1;
+      current.state = "queued";
+    } else if (current && !["paused", "queued"].includes(current.state)) {
       current.state = "failed";
       current.error =
         error instanceof Error
@@ -566,16 +606,22 @@ async function run(job: VideoJob) {
   }
 }
 async function pump() {
-  if (running) return;
+  if (running || typeof window === "undefined") return;
   running = true;
   try {
     for (;;) {
       const job = [...jobs.values()].find((item) => item.state === "queued");
       if (!job) break;
+      backgroundWork("episodes", "Downloading episodes");
+      await whenResumable();
+      if (job.retries) await backoff(Math.min(30000, 1500 * 2 ** job.retries));
+      // Paused, cancelled or retried by hand while waiting.
+      if (job.state !== "queued" || jobs.get(job.id) !== job) continue;
       await run(job);
     }
   } finally {
     running = false;
+    backgroundWork("episodes", "");
   }
 }
 export async function getOfflineVideo(id: string): Promise<SavedVideo> {

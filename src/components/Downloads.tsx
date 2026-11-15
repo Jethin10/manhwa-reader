@@ -9,6 +9,7 @@ import { Reader, type ChapterNav } from "./Reader";
 import { useVideoDownloads } from "@/lib/video-downloads";
 import { OfflineVideo } from "./VideoDownloads";
 import { DownloadLibrary } from "./DownloadLibrary";
+import { useMovieDownloads } from "@/lib/native-movies";
 
 const num = (c: { number: string | null }) => {
   const n = parseFloat(c.number ?? "");
@@ -21,6 +22,7 @@ export function Downloads() {
     video = params.get("video");
   const { saved, jobs } = useDownloads();
   const videoDownloads = useVideoDownloads();
+  const movies = useMovieDownloads();
   if (video) return <OfflineVideo key={video} id={video} />;
   if (read) {
     const copy = saved[read];
@@ -44,6 +46,7 @@ export function Downloads() {
       jobs={jobs}
       videos={videoDownloads.saved}
       videoJobs={videoDownloads.jobs}
+      movies={movies}
       tab={params.get("tab")}
       open={params.get("open")}
     />
