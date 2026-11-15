@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- raw MangaDex JSON is mapped into typed shapes below */
 import { cacheLife } from "next/cache";
+import { CATALOG_CACHE } from "./cache-profiles";
 import { img } from "./images";
 
 const API = "https://api.mangadex.org";
@@ -204,8 +205,9 @@ export type BrowseOptions = {
 };
 
 export async function browseSeries(opts: BrowseOptions = {}) {
-  "use cache";
-  cacheLife("minutes");
+  "use cache: remote";
+  // Shared by every server instance; see CATALOG_CACHE.
+  cacheLife(CATALOG_CACHE);
   const limit = opts.limit ?? 24;
   const page = Math.max(1, opts.page ?? 1);
   const order = opts.order ?? (opts.q ? "relevance" : "followedCount");
@@ -242,8 +244,9 @@ export async function getSeries(id: string) {
 }
 
 export async function getStats(ids: string[]): Promise<Record<string, Stats>> {
-  "use cache";
-  cacheLife("hours");
+  "use cache: remote";
+  // Shared by every server instance; see CATALOG_CACHE.
+  cacheLife(CATALOG_CACHE);
   if (!ids.length) return {};
   const res = await api<{ statistics: Record<string, any> }>(
     "/statistics/manga",

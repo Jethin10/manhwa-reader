@@ -158,7 +158,8 @@ export async function browseMovies(
   page: number,
   genre = "",
 ) {
-  "use cache";
+  // Shared by every server instance, so a cold instance doesn't wait on the catalog.
+  "use cache: remote";
   cacheLife({ stale: 300, revalidate: 1800, expire: 86400 });
   if (category === "telugu" || category === "indian") {
     // Small, explicit regional collections. Country/language filters aren't supported by Cinemeta.

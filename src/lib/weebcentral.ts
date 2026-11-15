@@ -1,6 +1,7 @@
 import "server-only";
 import { load } from "cheerio";
 import { cacheLife } from "next/cache";
+import { CATALOG_CACHE } from "./cache-profiles";
 import type { BrowseOptions, Chapter, Series } from "./mangadex";
 import { sourceFetch } from "./source-http";
 import { img } from "./images";
@@ -45,8 +46,9 @@ const STATUSES: Record<string, string> = {
 };
 
 export async function browseWeebCentral(opts: BrowseOptions) {
-  "use cache";
-  cacheLife("minutes");
+  "use cache: remote";
+  // Shared by every server instance; see CATALOG_CACHE.
+  cacheLife(CATALOG_CACHE);
   const page = Math.max(1, opts.page ?? 1);
   const limit = 32;
   const order = opts.order ?? (opts.q ? "relevance" : "followedCount");

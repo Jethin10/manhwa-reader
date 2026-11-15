@@ -1130,7 +1130,9 @@ const StripPage = memo(function StripPage({
       ref={(node) => register(index, node)}
       data-page-index={index}
       className="relative w-full"
-      style={{ aspectRatio: ratio ?? 2 / 3 }}
+      // Off-screen pages skip layout and paint (long chapters run past 100 pages); the
+      // aspect ratio keeps their height, so scrolling never jumps.
+      style={{ aspectRatio: ratio ?? 2 / 3, contentVisibility: "auto" }}
     >
       <PageImage
         page={page}

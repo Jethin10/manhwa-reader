@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
@@ -28,6 +28,39 @@ const UA = "manhwa-reader/0.1 (personal reader)";
 const BROWSER_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 const CACHE_DIR = join(tmpdir(), "manhwa-reader-img");
+// Hosts give a server a few hundred MB of temporary disk (Vercel: 512 MB). Keep the cache
+// well under that; the CDN in front holds the long-term copies anyway.
+const CACHE_MAX_BYTES = 300 * 1024 * 1024;
+const CACHE_TRIM_TO = 200 * 1024 * 1024;
+let cacheWrites = 0,
+  pruning = false;
+
+/** Saves a file to the disk cache, trimming the oldest files now and then. */
+async function cacheWrite(file: string, data: Buffer) {
+  await mkdir(CACHE_DIR, { recursive: true });
+  await writeFile(file, data);
+  if (++cacheWrites % 100 !== 0 || pruning) return;
+  pruning = true;
+  try {
+    const names = await readdir(CACHE_DIR);
+    const files = await Promise.all(
+      names.map(async (n) => {
+        const st = await stat(join(CACHE_DIR, n)).catch(() => null);
+        return { n, t: st?.mtimeMs ?? 0, size: st?.size ?? 0 };
+      }),
+    );
+    let total = files.reduce((sum, f) => sum + f.size, 0);
+    if (total <= CACHE_MAX_BYTES) return;
+    files.sort((a, b) => a.t - b.t);
+    for (const f of files) {
+      if (total <= CACHE_TRIM_TO) break;
+      await rm(join(CACHE_DIR, f.n), { force: true });
+      total -= f.size;
+    }
+  } finally {
+    pruning = false;
+  }
+}
 const CACHE_HEADERS = {
   "Cache-Control": "public, max-age=31536000, immutable",
 };
@@ -166,8 +199,7 @@ function getOriginal(target: URL, stableKey: string): Promise<Buffer> {
       throw lastErr;
     })();
     writing = true;
-    void mkdir(CACHE_DIR, { recursive: true })
-      .then(() => writeFile(file, buf))
+    void cacheWrite(file, buf)
       .catch(() => {})
       .finally(() => inflight.delete(stableKey));
     return buf;
@@ -216,11 +248,14 @@ export async function GET(request: Request) {
         }
       : {}),
   });
-  const processing = process.env.IMAGE_PROCESSING !== "off";
+  // "resize" shrinks covers but skips HD upscaling, the expensive part, for hosts that bill
+  // CPU time (Vercel); "off" passes everything through.
+  const mode = process.env.IMAGE_PROCESSING ?? "on";
+  const processing = mode !== "off";
   const width = processing
     ? Math.min(2000, Math.max(0, parseInt(params.get("w") ?? "") || 0))
     : 0;
-  const hd = processing && params.get("hd") === "1";
+  const hd = mode === "on" && params.get("hd") === "1";
 
   // At-home hosts rotate, so key page images by their path (hash + filename), not the host.
   const stableKey = target.hostname.endsWith("mangadex.network")
@@ -239,7 +274,7 @@ export async function GET(request: Request) {
   }
 
   const key = createHash("sha1")
-    .update(`${stableKey}|w${width}|hd${hd ? 1 : 0}|v2`)
+    .update(`${stableKey}|w${width}|hd${hd ? 1 : 0}|v3`)
     .digest("hex");
   const file = join(CACHE_DIR, `${key}.${hd ? "jpg" : "webp"}`);
   const type = hd ? "image/jpeg" : "image/webp";
@@ -279,16 +314,16 @@ export async function GET(request: Request) {
           .jpeg({ quality: 93, chromaSubsampling: "4:4:4" })
           .toBuffer();
       }
+      // Thumbnails (covers) look the same at a much lower quality; bigger images keep detail.
       return img
         .resize({ width, withoutEnlargement: true, kernel: "lanczos3" })
-        .webp({ quality: 90 })
+        .webp({ quality: width && width <= 640 ? 72 : 88, effort: 4 })
         .toBuffer();
     }).then(
       (out) => {
         // Publish once per transform and keep the resolved single-flight entry until the
         // file is available, without making the first client wait for disk I/O.
-        void mkdir(CACHE_DIR, { recursive: true })
-          .then(() => writeFile(file, out))
+        void cacheWrite(file, out)
           .catch(() => {})
           .finally(() => transformations.delete(key));
         return out;
