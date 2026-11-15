@@ -14,6 +14,7 @@ import {
   flagCameraCopy,
   getCameraCopies,
   rankProviders,
+  sameBackend,
   decodeMovieEvent,
   type MovieCopies,
   type MovieProvider,
@@ -172,7 +173,10 @@ export default function MoviePlayer({
   );
   const next = useCallback(
     (automatic = false) => {
-      const failures = automatic ? [...failed, selected] : failed;
+      // A failed player takes down any provider built on it (VidSrc.mov runs VidSrc.sh).
+      const failures = automatic
+        ? [...new Set([...failed, ...sameBackend(selected)])]
+        : failed;
       if (automatic) setFailed(failures);
       const current = providers.findIndex((p) => p.id === selected);
       const ordered = [
@@ -323,7 +327,13 @@ export default function MoviePlayer({
         </div>
       </div>
     );
-  const options: MoviePlaybackOptions = { ...prefs, startAt: resumeAt };
+  // Sources that report playback start on their own, so one that never starts can be told
+  // apart from one waiting for a tap, and skipped (MovieFrame).
+  const options: MoviePlaybackOptions = {
+    ...prefs,
+    autoplay: prefs.autoplay || !!provider.progress,
+    startAt: resumeAt,
+  };
   return (
     <section
       ref={container}
@@ -680,12 +690,18 @@ function MovieFrame({
       lastAdvance = Date.now(),
       failed = false;
     const timer = setTimeout(() => {
-      if (!hasPlayed.current) {
-        setStatus(
-          "Playback hasn't been confirmed. Press play inside the player, or try the next provider.",
-        );
-        setWaiting(false);
+      if (hasPlayed.current) return;
+      setWaiting(false);
+      // A source that reports playback was asked to start on its own; silence means it's
+      // stuck (VidSrc can sit on "Generating video stream…" forever). Move on.
+      if (provider.progress && options.autoplay) {
+        setStatus(`${provider.name} didn't start playing.`);
+        onEvent({ event: "error" });
+        return;
       }
+      setStatus(
+        "Playback hasn't been confirmed. Press play inside the player, or try the next provider.",
+      );
     }, timeout * 1000);
     const watchdog = setInterval(() => {
       if (!active || failed || Date.now() - lastAdvance < timeout * 1000)
@@ -744,7 +760,7 @@ function MovieFrame({
       clearInterval(watchdog);
       window.removeEventListener("message", message);
     };
-  }, [provider, movie, timeout, onEvent, options.startAt]);
+  }, [provider, movie, timeout, onEvent, options.startAt, options.autoplay]);
   return (
     <>
       <div
