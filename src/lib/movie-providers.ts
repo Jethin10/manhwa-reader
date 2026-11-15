@@ -229,12 +229,19 @@ export type MovieCopies = {
       why: string;
       /** Best resolution the app has seen this source stream for this movie. */
       height?: number;
+      /** Known to actually play this movie: someone watched it, or the app saw its stream. */
+      proven?: boolean;
     }
   >;
 };
 
 /** Providers that play VidSrc.sh's copy and so share its quality label. */
 const VIDSRC_COPY = ["vidsrc-sh", "vidsrc-mov"];
+
+/** Providers that run the same player underneath: when one fails, so does the other. */
+export function sameBackend(id: string): string[] {
+  return VIDSRC_COPY.includes(id) ? VIDSRC_COPY : [id];
+}
 
 /**
  * Which copy each provider is likely to play, strongest evidence first:
@@ -261,6 +268,7 @@ export function judgeCopies(
         : { copy: "real", why: `VidSrc.sh labels it ${label}` };
     else out[id] = { copy: "unknown", why: "Not checked yet" };
     if (r.height && release.status !== "camera") out[id].height = r.height;
+    if (r.height || (r.ok ?? 0) > (r.camera ?? 0)) out[id].proven = true;
   }
   return out;
 }
@@ -282,10 +290,13 @@ export function rankProviders(
         : copies?.[p.id]?.copy === "camera"
           ? 0
           : 1;
-  // Within a tier, the highest resolution measured from the stream wins.
+  // Within a tier, a source proven to play this movie (watched, or its stream measured by
+  // the app) beats one that only carries a label; then the highest measured resolution.
+  const proven = (p: MovieProvider) => (copies?.[p.id]?.proven ? 1 : 0);
   return [...providers].sort(
     (a, b) =>
       tier(b) - tier(a) ||
+      proven(b) - proven(a) ||
       (copies?.[b.id]?.height ?? 0) - (copies?.[a.id]?.height ?? 0),
   );
 }
