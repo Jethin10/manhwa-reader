@@ -2,6 +2,7 @@ import "server-only";
 import { load, type CheerioAPI } from "cheerio";
 import type { AnyNode } from "domhandler";
 import { cacheLife } from "next/cache";
+import { CATALOG_CACHE } from "./cache-profiles";
 import type { BrowseOptions, Chapter, Series } from "./mangadex";
 import { sourceFetch } from "./source-http";
 import { img } from "./images";
@@ -61,8 +62,9 @@ function card($: CheerioAPI, el: AnyNode): Series | null {
 }
 
 export async function browseMangaKatana(opts: BrowseOptions) {
-  "use cache";
-  cacheLife("minutes");
+  "use cache: remote";
+  // Shared by every server instance; see CATALOG_CACHE.
+  cacheLife(CATALOG_CACHE);
   const page = Math.max(1, opts.page ?? 1);
   const prefix = page > 1 ? `/page/${page}` : "";
   // Manhwa and manhua are genres on the site, so their listings come from the genre pages.

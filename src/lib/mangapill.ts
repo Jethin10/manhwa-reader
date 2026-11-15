@@ -1,6 +1,7 @@
 import "server-only";
 import { load } from "cheerio";
 import { cacheLife } from "next/cache";
+import { CATALOG_CACHE } from "./cache-profiles";
 import type { BrowseOptions, Chapter, Series } from "./mangadex";
 import { sourceFetch } from "./source-http";
 import { img } from "./images";
@@ -30,8 +31,9 @@ const STATUSES: Record<string, string> = {
 };
 
 export async function browseMangaPill(opts: BrowseOptions) {
-  "use cache";
-  cacheLife("minutes");
+  "use cache: remote";
+  // Shared by every server instance; see CATALOG_CACHE.
+  cacheLife(CATALOG_CACHE);
   const page = Math.max(1, opts.page ?? 1);
   const p = new URLSearchParams({ q: opts.q ?? "", page: String(page) });
   // MangaPill has no "manhwa" type; Korean titles are filed as manga, so only filter the types it knows.

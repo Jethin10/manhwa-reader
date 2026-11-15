@@ -17,6 +17,8 @@ export const metadata: Metadata = {
   applicationName: "Kairo",
   appleWebApp: { capable: true, title: "Kairo", statusBarStyle: "black-translucent" },
   formatDetection: { telephone: false },
+  // Same as the Referrer-Policy header (next.config.ts): Asura's image CDN refuses other sites.
+  referrer: "no-referrer",
   icons: {
     icon: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
     apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],

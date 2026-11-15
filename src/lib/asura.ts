@@ -1,5 +1,6 @@
 import "server-only";
 import { cacheLife } from "next/cache";
+import { CATALOG_CACHE } from "./cache-profiles";
 import type { BrowseOptions, Chapter, Series } from "./mangadex";
 import { astroProps, plainText, sourceFetch } from "./source-http";
 import { img } from "./images";
@@ -65,8 +66,9 @@ function mapSeries(s: RawSeries): Series {
   };
 }
 export async function browseAsura(opts: BrowseOptions) {
-  "use cache";
-  cacheLife("minutes");
+  "use cache: remote";
+  // Shared by every server instance; see CATALOG_CACHE.
+  cacheLife(CATALOG_CACHE);
   const page = opts.page ?? 1,
     limit = opts.limit ?? 24;
   const p = new URLSearchParams({
@@ -100,8 +102,9 @@ export async function browseAsura(opts: BrowseOptions) {
   };
 }
 export async function asuraDetail(id: string) {
-  "use cache";
-  cacheLife("minutes");
+  "use cache: remote";
+  // Shared by every server instance; see CATALOG_CACHE.
+  cacheLife(CATALOG_CACHE);
   const data = (await (
     await sourceFetch(`${API}/series/${slugOf(id)}`)
   ).json()) as { series?: RawSeries; data?: { series?: RawSeries } };

@@ -1,6 +1,7 @@
 import "server-only";
 import { load } from "cheerio";
 import { cacheLife } from "next/cache";
+import { CATALOG_CACHE } from "./cache-profiles";
 import { sourceFetch } from "./source-http";
 
 const SITE = "https://hianime.tr";
@@ -42,8 +43,9 @@ export async function browseAnime(q = "", category = "popular", page = 1) {
   return browseAnimeCached(q.trim().toLowerCase(), category, page);
 }
 async function browseAnimeCached(q: string, category: string, page: number) {
-  "use cache";
-  cacheLife("minutes");
+  // Shared by every server instance; see CATALOG_CACHE.
+  "use cache: remote";
+  cacheLife(CATALOG_CACHE);
   const path = q
     ? `/search?keyword=${encodeURIComponent(q)}&page=${page}`
     : `/${category === "latest" ? "recently-updated" : category === "dub" ? "dubbed-anime" : category === "airing" ? "top-airing" : "most-popular"}?page=${page}`;
