@@ -131,7 +131,7 @@ export function Chrome({ path }: { path: string }) {
             aria-label="Kairo home"
           >
             <Logo />
-            <span className="text-[20px] leading-none font-extrabold tracking-[-0.035em] [font-stretch:125%]">
+            <span className="text-[21px] leading-none font-bold tracking-[-0.045em] [font-stretch:118%]">
               Kairo
             </span>
           </Link>

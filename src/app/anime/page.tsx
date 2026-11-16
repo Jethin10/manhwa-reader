@@ -7,6 +7,7 @@ import { Billboard } from "@/components/Billboard";
 import { ContinueRow } from "@/components/ContinueRow";
 import { Shelf, ShelfItem } from "@/components/Shelf";
 import { SectionHeader } from "@/components/SectionHeader";
+import { LandingSkeleton } from "@/components/Skeletons";
 import { coverSrc } from "@/lib/images";
 import { dayNumber, errorText } from "@/lib/format";
 
@@ -20,9 +21,7 @@ const categories = [
 export default function AnimePage({ searchParams }: PageProps<"/anime">) {
   return (
     <Suspense
-      fallback={
-        <div className="billboard skeleton min-h-[min(78svh,680px)]" />
-      }
+      fallback={<LandingSkeleton />}
     >
       <AnimeContent searchParams={searchParams} />
     </Suspense>

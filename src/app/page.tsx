@@ -20,6 +20,7 @@ import { dayNumber } from "@/lib/format";
 import { Cover, SeriesCard } from "@/components/SeriesCard";
 import { Shelf, ShelfItem } from "@/components/Shelf";
 import { TimeAgo } from "@/components/TimeAgo";
+import { HeroSkeleton, RowSkeleton } from "@/components/Skeletons";
 
 type BrowseOpts = Parameters<typeof browseSeries>[0];
 
@@ -39,34 +40,34 @@ export default function Home() {
         <Feature />
       </Suspense>
       <div className="after-billboard mt-8 space-y-8 lg:space-y-10">
-      <Suspense fallback={<ShelfSkeleton />}>
+      <Suspense fallback={<RowSkeleton />}>
         <AnimeShelf title="Trending Anime" category="popular" />
       </Suspense>
       <ContinueRow />
       <MyListRow />
-      <Suspense fallback={<ShelfSkeleton />}>
+      <Suspense fallback={<RowSkeleton />}>
         <MovieShelf title="Popular Movies" category="popular" />
       </Suspense>
-      <Suspense fallback={<ShelfSkeleton />}>
+      <Suspense fallback={<RowSkeleton />}>
         <TopCharts />
       </Suspense>
-      <Suspense fallback={<ShelfSkeleton />}>
+      <Suspense fallback={<RowSkeleton />}>
         <AnimeShelf title="Airing Now" category="airing" />
       </Suspense>
-      <Suspense fallback={<ShelfSkeleton />}>
+      <Suspense fallback={<RowSkeleton />}>
         <MovieShelf title="New Releases" category="new" />
       </Suspense>
-      <Suspense fallback={<ShelfSkeleton />}>
+      <Suspense fallback={<RowSkeleton />}>
         <SeriesShelf
           title="Highest Rated Manhwa"
           order="rating"
           href="/series?order=rating"
         />
       </Suspense>
-      <Suspense fallback={<ShelfSkeleton />}>
+      <Suspense fallback={<RowSkeleton />}>
         <MovieShelf title="Telugu Picks" category="telugu" />
       </Suspense>
-      <Suspense fallback={<ShelfSkeleton />}>
+      <Suspense fallback={<RowSkeleton />}>
         <SeriesShelf
           title="Explore Manga"
           order="followedCount"
@@ -303,26 +304,6 @@ function LatestRow({ entry: { series, chapters } }: { entry: LatestEntry }) {
         </ul>
       </div>
     </article>
-  );
-}
-
-function HeroSkeleton() {
-  return <div className="billboard skeleton min-h-[min(78svh,680px)] sm:min-h-[min(80svh,780px)]" />;
-}
-
-function ShelfSkeleton() {
-  return (
-    <div className="gutter mx-auto max-w-[2560px] space-y-3">
-      <div className="skeleton h-7 w-48 rounded-md" />
-      <div className="flex gap-4 overflow-hidden">
-        {Array.from({ length: 8 }, (_, i) => (
-          <div
-            key={i}
-            className="skeleton aspect-[2/3] w-[30vw] max-w-[148px] shrink-0 rounded-[6px] sm:w-[164px] sm:max-w-none xl:w-[176px]"
-          />
-        ))}
-      </div>
-    </div>
   );
 }
 

@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Archivo } from "next/font/google";
+import { Mona_Sans } from "next/font/google";
 import { Suspense } from "react";
 import { Chrome, Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -9,9 +9,10 @@ import { Toaster } from "@/components/Toaster";
 import { DownloadResumer } from "@/components/DownloadResumer";
 import "./globals.css";
 
-// One family; its width axis is Kairo's voice (expanded titles, condensed meta).
-const archivo = Archivo({
-  variable: "--font-archivo",
+// One brand grotesk for everything (GitHub's Mona Sans, by Degarism): restrained like the
+// faces Netflix and Apple run on, with a width axis for titles and the wordmark.
+const mona = Mona_Sans({
+  variable: "--font-brand",
   subsets: ["latin"],
   axes: ["wdth"],
 });
@@ -40,7 +41,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${archivo.variable} h-full`}>
+    <html lang="en" className={`${mona.variable} h-full`}>
       <body className="flex min-h-full flex-col">
         <PreferenceEffects />
         <AppUpdate />

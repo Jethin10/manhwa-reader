@@ -13,6 +13,12 @@ import { SeriesCard } from "@/components/SeriesCard";
 import { Billboard } from "@/components/Billboard";
 import { ContinueRow } from "@/components/ContinueRow";
 import { SectionHeader } from "@/components/SectionHeader";
+import {
+  GridSkeleton,
+  HeroSkeleton,
+  LandingSkeleton,
+  RowSkeleton,
+} from "@/components/Skeletons";
 import { Shelf, ShelfItem } from "@/components/Shelf";
 import { cleanDescription, dayNumber } from "@/lib/format";
 import { coverSrc } from "@/lib/images";
@@ -52,13 +58,7 @@ export function BrowseCatalog({
   initialType?: SeriesType;
 }) {
   return (
-    <Suspense
-      fallback={
-        <div className="gutter mx-auto max-w-[2560px]">
-          <GridSkeleton />
-        </div>
-      }
-    >
+    <Suspense fallback={<LandingSkeleton />}>
       <Section searchParams={searchParams} initialType={initialType} />
     </Suspense>
   );
@@ -77,7 +77,9 @@ async function Section({
     return <ComicsHome type={initialType === "manga" ? "manga" : "manhwa"} />;
   return (
     <div className="gutter mx-auto max-w-[2560px]">
-      <Browse sp={sp} initialType={initialType} />
+      <Suspense fallback={<GridSkeleton />}>
+        <Browse sp={sp} initialType={initialType} />
+      </Suspense>
     </div>
   );
 }
@@ -343,20 +345,6 @@ function PageLink({
   );
 }
 
-function GridSkeleton() {
-  return (
-    <>
-      <div className="skeleton mt-14 h-10 w-48 rounded-lg lg:mt-20" />
-      <div className="skeleton mt-5 h-11 w-full rounded-full sm:w-[420px]" />
-      <div className="mt-6 grid grid-cols-3 gap-x-2.5 gap-y-6 sm:grid-cols-4 sm:gap-x-3.5 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 min-[1800px]:grid-cols-9">
-        {Array.from({ length: 21 }, (_, i) => (
-          <div key={i} className="skeleton aspect-[2/3] rounded-[6px]" />
-        ))}
-      </div>
-    </>
-  );
-}
-
 type Row = {
   title: string;
   href: string;
@@ -409,17 +397,13 @@ function ComicsHome({ type }: { type: "manhwa" | "manga" }) {
   const base = type === "manga" ? "/manga" : "/series";
   return (
     <div className="pb-12">
-      <Suspense
-        fallback={
-          <div className="billboard skeleton min-h-[min(78svh,680px)] sm:min-h-[min(80svh,780px)]" />
-        }
-      >
+      <Suspense fallback={<HeroSkeleton />}>
         <ComicsFeature type={type} row={rows[0]} />
       </Suspense>
       <div className="after-billboard mt-8 space-y-8 lg:space-y-10">
         {rows.map((row, i) => (
           <Fragment key={row.title}>
-            <Suspense fallback={<ShelfFallback />}>
+            <Suspense fallback={<RowSkeleton title={row.title} />}>
               <ComicsRow row={row} />
             </Suspense>
             {i === 0 && <ContinueRow title="Continue Reading" media={["series"]} />}
@@ -499,18 +483,3 @@ async function ComicsRow({ row }: { row: Row }) {
   );
 }
 
-function ShelfFallback() {
-  return (
-    <div className="gutter mx-auto max-w-[2560px] space-y-3">
-      <div className="skeleton h-7 w-48 rounded-md" />
-      <div className="flex gap-2.5 overflow-hidden sm:gap-3.5">
-        {Array.from({ length: 8 }, (_, i) => (
-          <div
-            key={i}
-            className="skeleton aspect-[2/3] w-[30vw] max-w-[148px] shrink-0 rounded-[6px] sm:w-[164px] sm:max-w-none xl:w-[176px]"
-          />
-        ))}
-      </div>
-    </div>
-  );
-}

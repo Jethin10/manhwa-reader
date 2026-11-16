@@ -10,6 +10,7 @@ import { MovieCard } from "@/components/MovieLibrary";
 import { SearchBox } from "@/components/SearchBox";
 import { SeriesCard } from "@/components/SeriesCard";
 import { Shelf, ShelfItem } from "@/components/Shelf";
+import { RowSkeleton } from "@/components/Skeletons";
 
 export const metadata = { title: "Search" };
 
@@ -157,22 +158,6 @@ function ResultRow({
     <Shelf title={title} href={href}>
       {children}
     </Shelf>
-  );
-}
-
-function RowSkeleton({ title }: { title: string }) {
-  return (
-    <section className="gutter mx-auto max-w-[2560px]" aria-busy>
-      <h2 className="t-title3 flex min-h-11 items-center sm:t-title2">{title}</h2>
-      <div className="mt-2.5 flex gap-2.5 overflow-hidden sm:gap-3.5">
-        {Array.from({ length: 8 }, (_, i) => (
-          <div
-            key={i}
-            className="skeleton aspect-[2/3] w-[30vw] max-w-[148px] shrink-0 rounded-[6px] sm:w-[164px] sm:max-w-none xl:w-[176px]"
-          />
-        ))}
-      </div>
-    </section>
   );
 }
 
