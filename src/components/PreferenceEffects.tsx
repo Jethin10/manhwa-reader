@@ -2,7 +2,7 @@
 import { useEffect } from "react";
 import { usePreferences } from "@/lib/preferences";
 export const ACCENTS = {
-  kairo: "#f2c14e",
+  kairo: "#f5f5f7",
   violet: "#bf5af2",
   rose: "#ff375f",
   sky: "#0a84ff",
@@ -16,10 +16,10 @@ export function PreferenceEffects() {
       "--color-accent",
       ACCENTS[p.accent],
     );
-    // Dark text on the gold, white on the deeper accents.
+    // Black text on the white Kairo accent, white on the coloured ones.
     document.documentElement.style.setProperty(
       "--on-accent",
-      p.accent === "kairo" ? "#1a1405" : "#ffffff",
+      p.accent === "kairo" ? "#000000" : "#ffffff",
     );
   }, [p.reduceMotion, p.accent]);
   return null;

@@ -1,17 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <!-- Kairo: a K made of a stem and a wedge (a turned page, a play-head). Lamp gold on night ink. -->
-  <defs>
-    <radialGradient id="bg" cx="0.5" cy="0.3" r="0.85">
-      <stop offset="0" stop-color="#1f2240"/>
-      <stop offset="1" stop-color="#0a0b17"/>
-    </radialGradient>
-    <linearGradient id="lamp" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffd877"/>
-      <stop offset="1" stop-color="#e9a92c"/>
-    </linearGradient>
-  </defs>
-  <rect width="1024" height="1024" fill="url(#bg)"/>
-  <g transform="translate(512 512) scale(20) translate(-16.5 -16)" fill="url(#lamp)">
+  <!-- Kairo: a K made of a stem and a wedge (a turned page, a play-head). White on black. -->
+  <rect width="1024" height="1024" fill="#000000"/>
+  <g transform="translate(512 512) scale(20) translate(-16.5 -16)" fill="#f5f5f7">
     <rect x="7" y="5" width="5" height="22" rx="1.2"/>
     <path d="M13.4 17.2 L26.5 5 C21.4 10.6 20.6 19.4 23.6 27 Z"/>
   </g>

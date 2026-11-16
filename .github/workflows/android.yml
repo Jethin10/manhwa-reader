@@ -84,5 +84,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "v$APP_VERSION" "$RUNNER_TEMP/manhwa.apk" \
-            --title "Manhwa $APP_VERSION" --latest \
-            --notes "Android app $APP_VERSION. Opens ${MANHWA_SERVER_URL} by default. Install manhwa.apk; installed apps offer this update automatically."
+            --title "Kairo $APP_VERSION" --latest \
+            --notes "Kairo for Android $APP_VERSION. Opens ${MANHWA_SERVER_URL} by default. Install manhwa.apk; installed apps offer this update automatically."

@@ -127,7 +127,7 @@ export function Settings() {
               label="Accent color"
               value={prefs.accent}
               choices={[
-                ["kairo", "Kairo"],
+                ["kairo", "Kairo (white)"],
                 ["violet", "Violet"],
                 ["rose", "Rose"],
                 ["sky", "Blue"],

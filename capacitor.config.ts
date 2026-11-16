@@ -11,7 +11,7 @@ const config: CapacitorConfig = {
   webDir: "mobile/www",
   // Lets the web app detect the native shell and its version (see NativeServerLink, AppUpdate).
   appendUserAgent: `ManhwaApp/${process.env.APP_VERSION ?? "0.0.0"}`,
-  backgroundColor: "#0a0b17",
+  backgroundColor: "#000000",
   server: {
     androidScheme: "https",
     // Home servers usually run plain http on the LAN.
@@ -20,15 +20,15 @@ const config: CapacitorConfig = {
   },
   android: {
     allowMixedContent: true,
-    backgroundColor: "#0a0b17",
+    backgroundColor: "#000000",
   },
   ios: {
-    backgroundColor: "#0a0b17",
+    backgroundColor: "#000000",
     contentInset: "never",
   },
   plugins: {
     SystemBars: { insetsHandling: "css", style: "DARK", initialViewportFitValueHint: "cover" },
-    SplashScreen: { launchShowDuration: 600, backgroundColor: "#0a0b17", showSpinner: false },
+    SplashScreen: { launchShowDuration: 600, backgroundColor: "#000000", showSpinner: false },
   },
 };
 

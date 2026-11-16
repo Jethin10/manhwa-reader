@@ -420,7 +420,7 @@ function Row({
           {selected && (
             <svg
               viewBox="0 0 24 24"
-              className="size-3.5 text-white"
+              className="size-3.5 text-on-accent"
               fill="none"
               stroke="currentColor"
               strokeWidth={3.5}
