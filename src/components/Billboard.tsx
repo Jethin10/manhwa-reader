@@ -96,7 +96,7 @@ export function Billboard({ item }: { item: BillboardItem }) {
       <div className="absolute inset-x-0 bottom-0 -z-10 h-40 bg-gradient-to-t from-bg to-transparent" />
       <div className="gutter mx-auto w-full max-w-[2560px] pt-32 pb-6 lg:pb-32">
         <div className="max-w-xl">
-          <p className="t-eyebrow text-[#f2c14e]">{item.kicker}</p>
+          <p className="t-eyebrow text-label/70">{item.kicker}</p>
           <h1
             className={`mt-2 text-balance font-bold tracking-[-0.038em] ${
               // Width steps down as titles get longer, so long names stay a block, not a wall.

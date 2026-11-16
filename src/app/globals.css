@@ -1,23 +1,23 @@
 @import "tailwindcss";
 
 /*
- * Kairo, "the late show": a night-ink stage, paper text, and one lamp-gold accent.
- * Ink #0a0b17 · Dusk #14162a · Slate #1f2240 · Paper #eeecf4 · Haze #9497b4 · Lamp #f2c14e
+ * Kairo is monochrome, like the screens it borrows from (Apple TV, MUBI): true black, neutral
+ * greys and white type. Colour comes from the posters and backdrops, never from the chrome.
  */
 @theme inline {
-  --color-bg: #0a0b17;
-  --color-elevated: #14162a;
-  --color-card: #14162a;
-  --color-card-2: #1f2240;
-  --color-fill: rgba(140, 146, 210, 0.13);
-  --color-fill-2: rgba(140, 146, 210, 0.21);
-  --color-hairline: rgba(140, 146, 210, 0.16);
-  --color-label: #eeecf4;
-  --color-secondary: #9497b4;
-  --color-tertiary: #5f6282;
-  --color-accent: #f2c14e;
-  --color-accent-strong: #e0aa2f;
-  --color-on-accent: var(--on-accent, #1a1405);
+  --color-bg: #000000;
+  --color-elevated: #161616;
+  --color-card: #161616;
+  --color-card-2: #232323;
+  --color-fill: rgba(255, 255, 255, 0.08);
+  --color-fill-2: rgba(255, 255, 255, 0.14);
+  --color-hairline: rgba(255, 255, 255, 0.1);
+  --color-label: #f5f5f7;
+  --color-secondary: #a1a1a6;
+  --color-tertiary: #6e6e73;
+  --color-accent: #f5f5f7;
+  --color-accent-strong: #ffffff;
+  --color-on-accent: var(--on-accent, #000000);
   --color-success: #30d158;
   --color-warning: #ffd60a;
   --font-sans: var(--font-brand), system-ui, sans-serif;
@@ -82,7 +82,7 @@ img {
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--color-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 28%, transparent);
 }
 
 :focus-visible {
@@ -92,7 +92,7 @@ img {
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(160, 166, 230, 0.2) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 ::-webkit-scrollbar {
   width: 10px;
@@ -373,6 +373,7 @@ form[role="search"]:has(input:focus-visible) {
 }
 .switch:checked::before {
   transform: translateX(20px);
+  background: var(--color-on-accent);
 }
 
 /* Watch progress bar */
@@ -399,17 +400,17 @@ form[role="search"]:has(input:focus-visible) {
 
 /* Frosted materials */
 .glass {
-  background: rgba(20, 22, 42, 0.72);
+  background: rgba(22, 22, 22, 0.74);
   -webkit-backdrop-filter: saturate(180%) blur(24px);
   backdrop-filter: saturate(180%) blur(24px);
 }
 .glass-bar {
-  background: rgba(10, 11, 23, 0.78);
+  background: rgba(0, 0, 0, 0.78);
   -webkit-backdrop-filter: saturate(180%) blur(30px);
   backdrop-filter: saturate(180%) blur(30px);
 }
 .glass-light {
-  background: rgba(238, 236, 244, 0.12);
+  background: rgba(255, 255, 255, 0.12);
   -webkit-backdrop-filter: saturate(180%) blur(24px);
   backdrop-filter: saturate(180%) blur(24px);
 }
@@ -434,7 +435,7 @@ form[role="search"]:has(input:focus-visible) {
   background-image: linear-gradient(
     100deg,
     transparent 35%,
-    rgba(170, 176, 240, 0.075) 50%,
+    rgba(255, 255, 255, 0.055) 50%,
     transparent 65%
   );
   background-size: 200vw 100%;
@@ -574,7 +575,7 @@ body:has(.movie-immersive) { overflow: hidden; }
 
 /* Pages that open on hero art pull it under the header; the bar stays clear until you scroll. */
 body:has([data-billboard]) .site-header[data-top="true"] {
-  background: linear-gradient(to bottom, rgb(10 11 23 / 0.7), transparent);
+  background: linear-gradient(to bottom, rgb(0 0 0 / 0.7), transparent);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   box-shadow: none;

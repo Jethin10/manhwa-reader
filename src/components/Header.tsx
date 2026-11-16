@@ -241,13 +241,13 @@ function UnreadDot({ className = "" }: { className?: string }) {
   );
 }
 
-/** The Kairo mark: a K built from a stem and a lifting page. Always lamp gold. */
+/** The Kairo mark: a K built from a stem and a lifting page. Always in the text colour. */
 export function Logo({ className = "h-[22px] w-auto" }: { className?: string }) {
   return (
     <svg
       viewBox="6.5 4.5 20.5 23"
       aria-hidden
-      className={`shrink-0 text-[#f2c14e] ${className}`}
+      className={`shrink-0 text-label ${className}`}
       fill="currentColor"
     >
       <rect x="7" y="5" width="5" height="22" rx="1.2" />

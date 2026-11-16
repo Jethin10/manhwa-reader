@@ -62,7 +62,7 @@ export const MOVIE_PROVIDERS: MovieProvider[] = [
       url("https://vidlink.pro", `/movie/${m.tmdbId}`, {
         autoplay: o.autoplay,
         startAt: Math.floor(o.startAt),
-        primaryColor: "f2c14e",
+        primaryColor: "ffffff",
       }),
   },
   {
