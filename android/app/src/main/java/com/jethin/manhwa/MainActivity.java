@@ -52,7 +52,13 @@ public class MainActivity extends BridgeActivity {
                     String host = request.getUrl().getHost();
                     String app = sniffer.appHost;
                     if (host != null && !app.isEmpty() && !app.equals("localhost")
-                        && !host.equalsIgnoreCase(app) && !host.equals("localhost")) return true;
+                        && !host.equalsIgnoreCase(app) && !host.equals("localhost")) {
+                        // A tapped app update still has to reach the system browser.
+                        String path = request.getUrl().getPath();
+                        if (request.hasGesture() && path != null && path.endsWith(".apk"))
+                            startActivity(new Intent(Intent.ACTION_VIEW, request.getUrl()));
+                        return true;
+                    }
                 }
                 return super.shouldOverrideUrlLoading(view, request);
             }

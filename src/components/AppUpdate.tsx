@@ -103,8 +103,12 @@ export function AppUpdate() {
       >
         Later
       </button>
+      {/* A new window: the shell refuses in-place navigation to other sites (player ads),
+          and hands tapped new-window links to the system browser, which saves the APK. */}
       <a
         href={update.url}
+        target="_blank"
+        rel="noopener noreferrer"
         className="pressable rounded-[8px] bg-accent px-4 py-2 text-[15px] font-semibold text-on-accent"
       >
         Update
