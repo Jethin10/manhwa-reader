@@ -290,3 +290,14 @@ export const PlayIcon = ({ className = "size-4" }: P) => (
     <path d="M7 4.6v14.8a1 1 0 0 0 1.52.85l12.1-7.4a1 1 0 0 0 0-1.7L8.52 3.75A1 1 0 0 0 7 4.6Z" />
   </svg>
 );
+export const PlusIcon = ({ className = "size-4" }: P) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" className={`${base} ${className}`}>
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+);
+export const InfoIcon = ({ className = "size-4" }: P) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className={`${base} ${className}`}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 11v5.5M12 7.6v.1" />
+  </svg>
+);

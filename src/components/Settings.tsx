@@ -1,5 +1,7 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
+import { ChevronRight } from "./Icons";
 import {
   DEFAULT_READER,
   updateReaderSettings,
@@ -37,8 +39,8 @@ export function Settings() {
     );
   }
   return (
-    <div className="gutter mx-auto max-w-[1050px] pt-4 pb-10 lg:pt-12">
-      <h1 className="t-large">Preferences</h1>
+    <div className="gutter mx-auto max-w-[1050px] pt-3 pb-10 lg:pt-8">
+      <h1 className="t-title1 sm:t-large">Settings</h1>
       <p className="t-sub mt-1 text-secondary">
         Reading, watching, and accessibility preferences stay on this device.
       </p>
@@ -57,7 +59,7 @@ export function Settings() {
             key={id}
             onClick={() => setTab(id)}
             aria-pressed={tab === id}
-            className={`shrink-0 rounded-full px-5 py-2.5 text-sm ${tab === id ? "bg-white text-black" : "bg-fill text-secondary"}`}
+            className="chip"
           >
             {label}
           </button>
@@ -84,6 +86,13 @@ export function Settings() {
           <>
             <h2 className="mb-6 text-xl font-semibold">Playback preferences</h2>
             <PlaybackOptions settings={prefs} onChange={updatePreferences} />
+            <Link
+              href="/movies/providers"
+              className="mt-6 flex min-h-11 items-center justify-between rounded-xl bg-fill px-4 text-sm font-medium transition-colors hover:bg-fill-2"
+            >
+              Movie players and providers
+              <ChevronRight className="size-4 text-secondary" />
+            </Link>
             <div className="mt-6 rounded-xl bg-fill p-4 text-xs leading-6 text-secondary">
               <p>
                 Shortcuts: Space/K play or pause; J/L or arrows seek; M mute; F
@@ -118,9 +127,10 @@ export function Settings() {
               label="Accent color"
               value={prefs.accent}
               choices={[
+                ["kairo", "Kairo"],
                 ["violet", "Violet"],
-                ["blue", "Blue"],
                 ["rose", "Rose"],
+                ["sky", "Blue"],
               ]}
               onChange={(accent) =>
                 updatePreferences({ accent: accent as typeof prefs.accent })

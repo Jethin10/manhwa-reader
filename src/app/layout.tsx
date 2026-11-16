@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Archivo } from "next/font/google";
 import { Suspense } from "react";
 import { Chrome, Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -9,7 +9,12 @@ import { Toaster } from "@/components/Toaster";
 import { DownloadResumer } from "@/components/DownloadResumer";
 import "./globals.css";
 
-const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
+// One family; its width axis is Kairo's voice (expanded titles, condensed meta).
+const archivo = Archivo({
+  variable: "--font-archivo",
+  subsets: ["latin"],
+  axes: ["wdth"],
+});
 
 export const metadata: Metadata = {
   title: { default: "Kairo — Anime, movies and manhwa", template: "%s · Kairo" },
@@ -26,7 +31,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#000000",
+  themeColor: "#0a0b17",
   colorScheme: "dark",
   viewportFit: "cover",
   width: "device-width",
@@ -35,7 +40,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${inter.variable} h-full`}>
+    <html lang="en" className={`${archivo.variable} h-full`}>
       <body className="flex min-h-full flex-col">
         <PreferenceEffects />
         <AppUpdate />

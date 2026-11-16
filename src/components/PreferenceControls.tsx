@@ -59,7 +59,7 @@ export function Chips({
               onClick={() => onChange(String(v))}
               className={`h-9 rounded-full px-3.5 text-[13px] font-medium transition-colors ${
                 on
-                  ? "bg-accent text-white"
+                  ? "bg-accent text-on-accent"
                   : "bg-fill text-label/85 hover:bg-fill-2"
               }`}
             >
@@ -153,7 +153,7 @@ function Group({
 }) {
   return (
     <section className="space-y-4">
-      <h3 className="text-[11px] font-semibold tracking-[0.06em] text-tertiary uppercase">
+      <h3 className="text-[11px] font-semibold text-tertiary">
         {title}
       </h3>
       {children}

@@ -14,7 +14,7 @@ export type Preferences = {
   buffer: "balanced" | "generous";
   dataSaver: boolean;
   reduceMotion: boolean;
-  accent: "violet" | "blue" | "rose";
+  accent: "kairo" | "violet" | "rose" | "sky";
 };
 export const DEFAULT_PREFERENCES: Preferences = {
   speed: 1,
@@ -30,7 +30,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   buffer: "balanced",
   dataSaver: false,
   reduceMotion: false,
-  accent: "blue",
+  accent: "kairo",
 };
 export const PREFERENCES_KEY = "mr:preferences";
 const EVENT = "mr:preferences";
@@ -55,8 +55,8 @@ export function normalizePreferences(raw: unknown): Preferences {
     buffer: v.buffer === "generous" ? "generous" : "balanced",
     dataSaver: v.dataSaver === true,
     reduceMotion: v.reduceMotion === true,
-    accent:
-      v.accent === "violet" ? "violet" : v.accent === "rose" ? "rose" : "blue",
+    // "blue" was the old default (iOS blue), so it moves to the Kairo accent.
+    accent: (["violet", "rose", "sky"] as const).find((a) => a === v.accent) ?? "kairo",
   };
 }
 export function getPreferences() {

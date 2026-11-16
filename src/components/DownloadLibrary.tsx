@@ -283,15 +283,15 @@ function Overview({
   const libraryCount = titles.filter((t) => t.count > 0).length;
 
   return (
-    <div className="gutter mx-auto max-w-[1100px] pt-2 pb-16 lg:pt-6">
+    <div className="gutter mx-auto max-w-[1100px] pt-3 pb-16 lg:pt-8">
       <Link
         href="/bookmarks"
-        className="t-sub -ml-1 inline-flex min-h-11 items-center gap-1 text-accent"
+        className="t-footnote -ml-1 inline-flex min-h-11 items-center gap-0.5 font-medium text-secondary transition-colors hover:text-label"
       >
         <ChevronLeft className="size-4" />
-        Library
+        My List
       </Link>
-      <h1 className="t-large mt-1">Downloads</h1>
+      <h1 className="t-title1 sm:t-large">Downloads</h1>
       {(used > 0 || (quota && quota.quota > 0)) && (
         <div className="mt-3">
           <p className="t-footnote text-secondary">
@@ -395,7 +395,7 @@ function Poster({ title: t }: { title: Title }) {
       <div className="relative">
         <Cover cover={t.cover} alt="" sizes="160px" className="aspect-[2/3] w-full" />
         {t.count > 0 && (
-          <span className="absolute top-1.5 left-1.5 min-w-6 rounded-md bg-accent px-1.5 py-0.5 text-center text-[12px] font-bold text-white tabular-nums">
+          <span className="absolute top-1.5 left-1.5 min-w-6 rounded-md bg-accent px-1.5 py-0.5 text-center text-[12px] font-bold text-on-accent tabular-nums">
             {t.count}
           </span>
         )}

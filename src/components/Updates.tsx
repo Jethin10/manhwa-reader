@@ -14,6 +14,7 @@ import {
 import { DownloadButton } from "./ChapterList";
 import { Cover } from "./SeriesCard";
 import { TimeAgo } from "./TimeAgo";
+import { ChevronLeft } from "./Icons";
 
 function dayLabel(t: number) {
   const d = new Date(t);
@@ -77,10 +78,17 @@ export function Updates() {
   const jobById = new Map(jobs.map((j) => [j.id, j]));
 
   return (
-    <div className="gutter mx-auto max-w-[860px] pt-4 pb-16 lg:pt-12">
+    <div className="gutter mx-auto max-w-[860px] pt-3 pb-16 lg:pt-8">
+      <Link
+        href="/bookmarks"
+        className="t-footnote -ml-1 inline-flex min-h-11 items-center gap-0.5 font-medium text-secondary transition-colors hover:text-label"
+      >
+        <ChevronLeft className="size-4" />
+        My List
+      </Link>
       <div className="flex items-end justify-between gap-4">
         <div>
-          <h1 className="t-large">Updates</h1>
+          <h1 className="t-title1 sm:t-large">Updates</h1>
           <p className="t-sub mt-1 text-secondary">
             {refreshing ? (
               "Checking your library for new chapters…"
@@ -147,7 +155,7 @@ export function Updates() {
         <div className="mt-8 space-y-7">
           {groups.map((g) => (
             <section key={g.label}>
-              <h2 className="t-footnote mb-2 px-4 font-semibold tracking-[0.02em] text-secondary uppercase">
+              <h2 className="t-footnote mb-2 px-4 font-semibold text-secondary">
                 {g.label}
               </h2>
               <ul className="grouped">

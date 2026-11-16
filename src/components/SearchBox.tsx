@@ -7,7 +7,7 @@ import type { Suggestion } from "@/app/api/suggest/route";
 import { ChevronRight, SearchIcon } from "./Icons";
 import { RetryImg } from "./RetryImg";
 
-export type SearchSection = "manga" | "anime" | "movies";
+export type SearchSection = "all" | "manga" | "anime" | "movies";
 
 // Suggestions already fetched this session, so retyping or backspacing is instant.
 const seen = new Map<string, Suggestion[]>();
@@ -15,16 +15,19 @@ const seen = new Map<string, Suggestion[]>();
 export function SearchBox({
   large,
   autoFocus,
-  section = "manga",
+  section = "all",
   mangaOnly = false,
+  initial = "",
 }: {
   large?: boolean;
   autoFocus?: boolean;
   section?: SearchSection;
   mangaOnly?: boolean;
+  /** Starting text, e.g. the query already on the search page. */
+  initial?: string;
 }) {
   const router = useRouter();
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initial);
   const [open, setOpen] = useState(false);
   const [found, setFound] = useState<{
     key: string;
@@ -35,7 +38,9 @@ export function SearchBox({
   const box = useRef<HTMLFormElement>(null);
   const listId = useId();
   const target =
-    section === "movies"
+    section === "all"
+      ? "/search"
+      : section === "movies"
       ? "/movies"
       : section === "anime"
         ? "/anime"
@@ -43,11 +48,13 @@ export function SearchBox({
           ? "/manga"
           : "/series";
   const label =
-    section === "movies"
-      ? "Search movies"
-      : section === "anime"
-        ? "Search anime"
-        : "Search manga";
+    section === "all"
+      ? "Search Kairo"
+      : section === "movies"
+        ? "Search movies"
+        : section === "anime"
+          ? "Search anime"
+          : "Search manga";
   const term = q.trim();
   const key = `${section}|${term.toLowerCase()}`;
   const fresh = found?.key === key ? found.items : (seen.get(key) ?? null);
@@ -116,10 +123,10 @@ export function SearchBox({
           router.push(pick.href);
         } else searchAll();
       }}
-      className={`relative flex items-center gap-2 bg-fill transition-colors focus-within:bg-fill-2 ${
+      className={`relative flex items-center gap-2 transition-colors ${
         large
-          ? "h-11 rounded-[12px] px-3.5"
-          : "h-9 rounded-[10px] px-3 [@media(pointer:coarse)]:h-11"
+          ? "h-11 rounded-[8px] bg-fill px-3.5 focus-within:bg-fill-2"
+          : "h-9 rounded-[8px] bg-bg/55 px-3 ring-1 ring-hairline backdrop-blur-md [@media(pointer:coarse)]:h-11"
       }`}
     >
       {target === "/series" && <input type="hidden" name="type" value="all" />}
@@ -162,7 +169,9 @@ export function SearchBox({
         spellCheck={false}
         autoFocus={autoFocus}
         placeholder={
-          section === "movies"
+          section === "all"
+            ? "Anime, movies, manhwa, manga…"
+            : section === "movies"
             ? "Search movies or IMDb ID"
             : section === "anime"
               ? "Search anime"
@@ -183,7 +192,7 @@ export function SearchBox({
 
       {showList && (
         <div
-          className={`absolute top-full z-50 mt-2 overflow-hidden rounded-[14px] bg-[#1c1c1e]/95 shadow-[0_20px_60px_-10px_rgba(0,0,0,0.8)] ring-[0.5px] ring-white/15 backdrop-blur-xl ${
+          className={`absolute top-full z-50 mt-2 overflow-hidden rounded-[10px] bg-elevated/95 shadow-[0_20px_60px_-10px_rgba(0,0,0,0.8)] ring-[0.5px] ring-white/15 backdrop-blur-xl ${
             large ? "inset-x-0" : "right-0 w-[380px] max-w-[calc(100vw-2rem)]"
           }`}
         >
@@ -220,11 +229,10 @@ export function SearchBox({
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="t-callout block truncate">{s.title}</span>
-                    {s.meta && (
-                      <span className="t-caption block truncate text-secondary">
-                        {s.meta}
-                      </span>
-                    )}
+                    <span className="t-caption flex gap-2 truncate text-secondary">
+                      <span className="text-label/75">{s.kind}</span>
+                      {s.meta && <span>{s.meta}</span>}
+                    </span>
                   </span>
                 </Link>
               </li>
@@ -250,7 +258,7 @@ export function SearchBox({
           >
             <SearchIcon className="size-3.5" />
             <span className="min-w-0 flex-1 truncate">
-              See all results for “{term}”
+              All results for “{term}”
             </span>
             <ChevronRight className="size-3.5" />
           </button>

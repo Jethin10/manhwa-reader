@@ -11,8 +11,8 @@ export default function manifest(): MetadataRoute.Manifest {
     display: "standalone",
     display_override: ["standalone", "minimal-ui"],
     orientation: "any",
-    background_color: "#000000",
-    theme_color: "#000000",
+    background_color: "#0a0b17",
+    theme_color: "#0a0b17",
     categories: ["books", "entertainment"],
     icons: [
       { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
@@ -20,8 +20,8 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: "/icons/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
     shortcuts: [
-      { name: "Library", url: "/bookmarks" },
-      { name: "Browse", url: "/series" },
+      { name: "My List", url: "/bookmarks" },
+      { name: "Manhwa", url: "/series" },
       { name: "Search", url: "/search" },
     ],
   };

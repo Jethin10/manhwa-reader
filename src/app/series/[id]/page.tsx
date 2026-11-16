@@ -7,8 +7,7 @@ import { providerOf, sourceOf } from "@/lib/sources";
 import { coverSrc, coverSrcSet } from "@/lib/images";
 import { cap, cleanDescription, errorText } from "@/lib/format";
 import { SourceIssue } from "@/components/SourceIssue";
-import { CollectionPicker } from "@/components/CollectionPicker";
-import { BookmarkButton } from "@/components/BookmarkButton";
+import { MyListButton } from "@/components/MyListButton";
 import { ChapterList } from "@/components/ChapterList";
 import { ReadButton } from "@/components/ReadButton";
 import { Synopsis } from "@/components/Synopsis";
@@ -85,7 +84,7 @@ async function LoadSeries({
             className="size-full scale-150 object-cover opacity-60 blur-[90px] saturate-[1.8]"
           />
         )}
-        <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/60 to-black" />
+        <div className="absolute inset-0 bg-gradient-to-b from-bg/10 via-bg/60 to-bg" />
       </div>
 
       <div className="gutter mx-auto max-w-[1120px] pt-6 lg:pt-14">
@@ -104,8 +103,8 @@ async function LoadSeries({
             )}
           </div>
           <div className="mt-6 w-full min-w-0 flex-1 md:mt-0 md:pb-1">
-            <p className="t-eyebrow text-secondary">{s.type}</p>
-            <h1 className="text-balance mt-1.5 font-[family-name:var(--font-display)] text-[28px] leading-[1.1] font-bold tracking-[-0.022em] sm:text-[40px] lg:text-[48px]">
+            <p className="t-eyebrow text-accent capitalize">{s.type}</p>
+            <h1 className="display text-balance mt-1.5 text-[30px] leading-[1.02] sm:text-[42px] lg:text-[52px]">
               {s.title}
             </h1>
             {creators.length > 0 && (
@@ -129,9 +128,8 @@ async function LoadSeries({
               >
                 <MergedRead id={id} />
               </Suspense>
-              <div className="flex items-center justify-center gap-3">
-                <BookmarkButton series={saved} />
-                <CollectionPicker item={{ ...saved, media: "series" }} />
+              <div className="flex justify-center sm:justify-start">
+                <MyListButton item={{ ...saved, media: "series" }} />
               </div>
             </div>
           </div>
@@ -208,7 +206,7 @@ async function LoadSeries({
               <Sources id={id} />
             </Suspense>
             <section>
-              <h2 className="t-footnote mb-2 px-4 font-semibold tracking-[0.02em] text-secondary uppercase">
+              <h2 className="t-footnote mb-2 px-4 font-semibold text-secondary">
                 Information
               </h2>
               <dl className="grouped">
@@ -318,7 +316,7 @@ async function Sources({ id }: { id: string }) {
     merged.sources.filter((s) => s.measured && !s.measured.broken).length > 1;
   return (
     <section>
-      <h2 className="t-footnote mb-2 flex items-center gap-1.5 px-4 font-semibold tracking-[0.02em] text-secondary uppercase">
+      <h2 className="t-footnote mb-2 flex items-center gap-1.5 px-4 font-semibold text-secondary">
         <SparkleIcon className="size-3.5 text-accent" />
         Sources
       </h2>
@@ -390,7 +388,7 @@ function Fact({
 }) {
   return (
     <div className="min-w-[104px] flex-1 px-3 text-center shadow-[inset_-0.5px_0_0_var(--color-hairline)] last:shadow-none">
-      <dt className="t-caption font-medium tracking-[0.04em] text-tertiary uppercase">
+      <dt className="t-caption font-medium text-tertiary">
         {label}
       </dt>
       <dd className="mt-1 truncate font-[family-name:var(--font-display)] text-[19px] font-semibold text-label/90 tabular-nums">
