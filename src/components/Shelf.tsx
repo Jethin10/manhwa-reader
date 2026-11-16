@@ -22,18 +22,34 @@ export function Shelf({
 
   return (
     <section className="group/shelf relative">
-      <div className="gutter mx-auto mb-3 flex max-w-[1440px] items-baseline justify-between">
-        <h2 className="t-title2">{title}</h2>
+      <div className="gutter mx-auto mb-2.5 flex max-w-[2560px] items-baseline justify-between gap-4">
+        {href ? (
+          <Link
+            href={href}
+            prefetch={false}
+            className="group/title inline-flex min-h-11 items-center gap-1"
+          >
+            <h2 className="t-title3 sm:t-title2">{title}</h2>
+          </Link>
+        ) : (
+          <h2 className="t-title3 flex min-h-11 items-center sm:t-title2">{title}</h2>
+        )}
         {href && (
-          <Link href={href} className="t-callout text-accent">
-            See All
+          <Link
+            href={href}
+            prefetch={false}
+            tabIndex={-1}
+            className="t-footnote inline-flex shrink-0 items-center gap-0.5 font-medium text-secondary transition-colors hover:text-label"
+          >
+            See all
+            <ChevronRight className="size-3.5" />
           </Link>
         )}
       </div>
       <div className="relative">
         <div
           ref={ref}
-          className="no-scrollbar mx-auto flex max-w-[1440px] snap-x snap-mandatory scroll-px-5 gap-3.5 overflow-x-auto overscroll-x-contain px-5 pb-2 sm:scroll-px-8 sm:gap-5 sm:px-8 xl:scroll-px-12 xl:px-12"
+          className="gutter no-scrollbar mx-auto flex max-w-[2560px] snap-x snap-mandatory scroll-px-[var(--gutter)] gap-2.5 overflow-x-auto overscroll-x-contain pb-2 sm:gap-3.5 2xl:gap-4"
         >
           {children}
         </div>
@@ -58,6 +74,6 @@ function ShelfArrow({ side, onClick }: { side: "left" | "right"; onClick: () => 
   );
 }
 
-export function ShelfItem({ children, className = "w-[132px] sm:w-[164px]" }: { children: React.ReactNode; className?: string }) {
+export function ShelfItem({ children, className = "w-[30vw] max-w-[148px] sm:w-[164px] sm:max-w-none xl:w-[176px] 2xl:w-[196px] min-[1800px]:w-[216px]" }: { children: React.ReactNode; className?: string }) {
   return <div className={`shrink-0 snap-start ${className}`}>{children}</div>;
 }

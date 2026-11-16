@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useUnreadCounts } from "@/lib/updates";
-import { SearchBox, type SearchSection } from "./SearchBox";
+import { SearchBox } from "./SearchBox";
 import {
   BooksIcon,
   GearIcon,
@@ -51,129 +52,138 @@ function FilmIcon({
   );
 }
 
-const NAV = [
-  { href: "/", label: "Home" },
-  { href: "/series", label: "Manhwa" },
-  { href: "/manga", label: "Manga" },
-  { href: "/anime", label: "Anime" },
-  { href: "/movies", label: "Movies" },
-  { href: "/bookmarks", label: "Library" },
-];
+type Item = {
+  href: string;
+  label: string;
+  match: (p: string) => boolean;
+};
+
+/** One map of the app, shared by the desktop nav and the mobile tab bar. */
+const HOME: Item = { href: "/", label: "Home", match: (p) => p === "/" };
+const ANIME: Item = {
+  href: "/anime",
+  label: "Anime",
+  match: (p) => p.startsWith("/anime"),
+};
+const MOVIES: Item = {
+  href: "/movies",
+  label: "Movies",
+  match: (p) => p.startsWith("/movies"),
+};
+const MANHWA: Item = {
+  href: "/series",
+  label: "Manhwa",
+  match: (p) => p.startsWith("/series"),
+};
+const MANGA: Item = {
+  href: "/manga",
+  label: "Manga",
+  match: (p) => p.startsWith("/manga"),
+};
+const LIBRARY: Item = { href: "/bookmarks", label: "My List", match: inLibrary };
+
+const NAV = [HOME, ANIME, MOVIES, MANHWA, MANGA, LIBRARY];
 
 const TABS = [
+  { ...HOME, Icon: HouseIcon },
+  { ...ANIME, Icon: PlayRectIcon },
+  { ...MOVIES, Icon: FilmIcon },
   {
-    href: "/",
-    label: "Home",
-    Icon: HouseIcon,
-    match: (p: string) => p === "/",
-  },
-  {
-    href: "/series",
-    label: "Manga",
+    ...MANHWA,
+    label: "Read",
+    // Manhwa and manga share one tab on phones; the browse page switches between them.
+    match: (p: string) => MANHWA.match(p) || MANGA.match(p),
     Icon: MangaIcon,
-    match: (p: string) => p.startsWith("/series") || p.startsWith("/manga"),
   },
-  {
-    href: "/search",
-    label: "Search",
-    Icon: MagnifierIcon,
-    match: (p: string) => p.startsWith("/search"),
-  },
-  {
-    href: "/anime",
-    label: "Anime",
-    Icon: PlayRectIcon,
-    match: (p: string) => p.startsWith("/anime"),
-  },
-  {
-    href: "/movies",
-    label: "Movies",
-    Icon: FilmIcon,
-    match: (p: string) => p.startsWith("/movies"),
-  },
-  {
-    href: "/bookmarks",
-    label: "Library",
-    Icon: BooksIcon,
-    match: inLibrary,
-  },
+  { ...LIBRARY, Icon: BooksIcon },
 ];
-
-const active = (path: string, href: string) =>
-  href === "/"
-    ? path === "/"
-    : href === "/bookmarks"
-      ? inLibrary(path)
-      : path === href || path.startsWith(`${href}/`);
 
 /** Reads the URL for active states; wrap in Suspense and fall back to `<Chrome path="" />`. */
 export function Header() {
-  const path = usePathname();
-  const params = useSearchParams();
-  const section =
-    path.startsWith("/movies") ||
-    (path === "/search" && params.get("section") === "movies")
-      ? "movies"
-      : path.startsWith("/anime") ||
-          (path === "/search" && params.get("section") === "anime")
-        ? "anime"
-        : "manga";
-  return <Chrome path={path} section={section} />;
+  return <Chrome path={usePathname()} />;
 }
 
-export function Chrome({
-  path,
-  section = "manga",
-}: {
-  path: string;
-  section?: SearchSection;
-}) {
+/** True until the page scrolls, so the bar can sit clear over a hero image. */
+function useAtTop() {
+  const [top, setTop] = useState(true);
+  useEffect(() => {
+    const update = () => setTop(window.scrollY < 24);
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    return () => window.removeEventListener("scroll", update);
+  }, []);
+  return top;
+}
+
+export function Chrome({ path }: { path: string }) {
+  const atTop = useAtTop();
+  const onSearch = path.startsWith("/search");
   return (
     <>
-      <header className="site-chrome glass-bar sticky top-0 z-40 pt-[var(--safe-top)] shadow-[inset_0_-0.5px_0_var(--color-hairline)]">
-        <div className="gutter mx-auto flex h-[52px] max-w-[1440px] items-center gap-6">
+      <header
+        data-top={atTop}
+        className="site-chrome site-header glass-bar sticky top-0 z-40 pt-[var(--safe-top)] shadow-[inset_0_-0.5px_0_var(--color-hairline)] transition-[background-color,box-shadow,backdrop-filter] duration-300"
+      >
+        <div className="gutter mx-auto flex h-[52px] max-w-[2560px] items-center gap-6">
           <Link
             href="/"
-            className="flex min-h-11 items-center gap-2.5"
+            className="flex min-h-11 items-center gap-2"
             aria-label="Kairo home"
           >
             <Logo />
-            <span className="t-headline">Kairo</span>
+            <span className="text-[20px] leading-none font-extrabold tracking-[-0.035em] [font-stretch:125%]">
+              Kairo
+            </span>
           </Link>
           <nav
             className="hidden items-center gap-1 lg:flex"
             aria-label="Primary"
           >
-            {NAV.map((n) => (
-              <Link
-                key={n.href}
-                href={n.href}
-                prefetch={n.href === "/bookmarks" ? null : false}
-                aria-current={active(path, n.href) ? "page" : undefined}
-                className={`hit t-footnote rounded-full px-3.5 py-1.5 font-medium transition-colors ${
-                  active(path, n.href)
-                    ? "bg-fill text-label"
-                    : "text-secondary hover:text-label"
-                }`}
-              >
-                {n.label}
-              </Link>
-            ))}
+            {NAV.map((n) => {
+              const on = n.match(path);
+              return (
+                <Link
+                  key={n.href}
+                  href={n.href}
+                  prefetch={n.href === "/bookmarks" ? null : false}
+                  aria-current={on ? "page" : undefined}
+                  className={`hit relative px-3 py-1.5 text-[14px] transition-colors ${
+                    on
+                      ? "font-semibold text-label"
+                      : "font-medium text-secondary hover:text-label"
+                  }`}
+                >
+                  {n.label}
+                  {n === LIBRARY && <UnreadDot className="top-0.5 right-0.5" />}
+                  {on && (
+                    <span className="absolute inset-x-3 -bottom-[9px] h-[2px] rounded-full bg-accent" />
+                  )}
+                </Link>
+              );
+            })}
           </nav>
-          <div className="ml-auto flex items-center gap-2">
-            <div className="hidden w-[260px] lg:block">
-              <SearchBox
-                key={section}
-                section={section}
-                mangaOnly={path.startsWith("/manga")}
-              />
-            </div>
+          <div className="ml-auto flex items-center gap-1">
+            {!onSearch && (
+              <div className="hidden w-[300px] lg:block">
+                <SearchBox />
+              </div>
+            )}
+            <Link
+              href="/search"
+              aria-label="Search"
+              aria-current={onSearch ? "page" : undefined}
+              className={`grid size-11 place-items-center rounded-full transition-colors hover:bg-fill lg:hidden ${
+                onSearch ? "text-label" : "text-secondary"
+              }`}
+            >
+              <MagnifierIcon filled={onSearch} className="size-[22px]" />
+            </Link>
             <Link
               href="/settings"
-              aria-label="Preferences"
+              aria-label="Settings"
               aria-current={path.startsWith("/settings") ? "page" : undefined}
               className={`grid size-11 place-items-center rounded-full transition-colors hover:bg-fill ${
-                path.startsWith("/settings") ? "text-accent" : "text-secondary"
+                path.startsWith("/settings") ? "text-label" : "text-secondary"
               }`}
             >
               <GearIcon />
@@ -187,26 +197,24 @@ export function Chrome({
         className="site-chrome glass-bar fixed inset-x-0 bottom-0 z-40 shadow-[inset_0_0.5px_0_var(--color-hairline)] lg:hidden"
         style={{ paddingBottom: "var(--safe-bottom)" }}
       >
-        <ul className="mx-auto grid h-14 max-w-xl grid-cols-6">
+        <ul className="mx-auto grid h-14 max-w-xl grid-cols-5">
           {TABS.map(({ href, label, Icon, match }) => {
             const on = match(path);
             return (
               <li key={href}>
                 <Link
-                  href={
-                    href === "/search" ? `/search?section=${section}` : href
-                  }
-                  prefetch={
-                    href === "/bookmarks" || href === "/search" ? null : false
-                  }
+                  href={href}
+                  prefetch={href === "/bookmarks" ? null : false}
                   aria-current={on ? "page" : undefined}
                   className={`flex h-full flex-col items-center justify-center gap-[3px] transition-colors ${
-                    on ? "text-accent" : "text-secondary active:text-label"
+                    on ? "text-label" : "text-tertiary active:text-secondary"
                   }`}
                 >
                   <span className="relative">
-                    <Icon filled={on} className="size-[25px]" />
-                    {href === "/bookmarks" && <UnreadDot />}
+                    <Icon filled={on} className="size-[24px]" />
+                    {href === "/bookmarks" && (
+                      <UnreadDot className="-top-0.5 -right-1" />
+                    )}
                   </span>
                   <span className="text-[10px] leading-none font-medium tracking-[0.01em]">
                     {label}
@@ -222,34 +230,28 @@ export function Chrome({
 }
 
 /** New chapters waiting in the library (from the last Updates check). */
-function UnreadDot() {
+function UnreadDot({ className = "" }: { className?: string }) {
   const unread = useUnreadCounts();
   if (!Object.values(unread).some((n) => n > 0)) return null;
   return (
     <span
       aria-label="New chapters"
-      className="absolute -top-0.5 -right-1 size-2.5 rounded-full bg-[#ff453a] ring-2 ring-black"
+      className={`absolute size-2 rounded-full bg-accent ring-2 ring-bg ${className}`}
     />
   );
 }
 
-export function Logo({ className = "size-7" }: { className?: string }) {
+/** The Kairo mark: a K built from a stem and a lifting page. Always lamp gold. */
+export function Logo({ className = "h-[22px] w-auto" }: { className?: string }) {
   return (
-    <span
-      className={`grid place-items-center rounded-[8px] bg-gradient-to-b from-[#3a3a3c] to-[#1c1c1e] shadow-[inset_0_0.5px_0_rgba(255,255,255,0.25),0_1px_3px_rgba(0,0,0,0.5)] ${className}`}
+    <svg
+      viewBox="6.5 4.5 20.5 23"
+      aria-hidden
+      className={`shrink-0 text-[#f2c14e] ${className}`}
+      fill="currentColor"
     >
-      <svg
-        viewBox="0 0 24 24"
-        className="size-[60%] text-white"
-        fill="currentColor"
-        aria-hidden
-      >
-        <path d="M4 5.2c2.6-.9 5.3-.6 7.2 1v13c-1.9-1.4-4.6-1.7-7.2-.8z" />
-        <path
-          d="M20 5.2c-2.6-.9-5.3-.6-7.2 1v13c1.9-1.4 4.6-1.7 7.2-.8z"
-          opacity=".55"
-        />
-      </svg>
-    </span>
+      <rect x="7" y="5" width="5" height="22" rx="1.2" />
+      <path d="M13.4 17.2 L26.5 5 C21.4 10.6 20.6 19.4 23.6 27 Z" />
+    </svg>
   );
 }

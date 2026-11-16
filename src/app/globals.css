@@ -1,23 +1,27 @@
 @import "tailwindcss";
 
-/* iOS dark system palette: grouped backgrounds, vibrant labels, hairline separators. */
+/*
+ * Kairo, "the late show": a night-ink stage, paper text, and one lamp-gold accent.
+ * Ink #0a0b17 · Dusk #14162a · Slate #1f2240 · Paper #eeecf4 · Haze #9497b4 · Lamp #f2c14e
+ */
 @theme inline {
-  --color-bg: #000000;
-  --color-elevated: #1c1c1e;
-  --color-card: #1c1c1e;
-  --color-card-2: #2c2c2e;
-  --color-fill: rgba(118, 118, 128, 0.24);
-  --color-fill-2: rgba(118, 118, 128, 0.36);
-  --color-hairline: rgba(84, 84, 88, 0.55);
-  --color-label: #ffffff;
-  --color-secondary: rgba(235, 235, 245, 0.62);
-  --color-tertiary: rgba(235, 235, 245, 0.34);
-  --color-accent: #0a84ff;
-  --color-accent-strong: #0071e3;
+  --color-bg: #0a0b17;
+  --color-elevated: #14162a;
+  --color-card: #14162a;
+  --color-card-2: #1f2240;
+  --color-fill: rgba(140, 146, 210, 0.13);
+  --color-fill-2: rgba(140, 146, 210, 0.21);
+  --color-hairline: rgba(140, 146, 210, 0.16);
+  --color-label: #eeecf4;
+  --color-secondary: #9497b4;
+  --color-tertiary: #5f6282;
+  --color-accent: #f2c14e;
+  --color-accent-strong: #e0aa2f;
+  --color-on-accent: var(--on-accent, #1a1405);
   --color-success: #30d158;
   --color-warning: #ffd60a;
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", var(--font-inter), system-ui, sans-serif;
-  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", var(--font-inter), system-ui, sans-serif;
+  --font-sans: var(--font-archivo), system-ui, sans-serif;
+  --font-display: var(--font-archivo), system-ui, sans-serif;
   --ease-apple: cubic-bezier(0.32, 0.72, 0, 1);
   --ease-spring: cubic-bezier(0.34, 1.36, 0.64, 1);
 }
@@ -27,6 +31,18 @@
   --safe-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
   --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
   --tabbar-h: calc(56px + var(--safe-bottom));
+  /* Page margin, shared by text blocks and the scroll padding of rows. */
+  --gutter: max(20px, env(safe-area-inset-left, 0px));
+}
+@media (width >= 40rem) {
+  :root {
+    --gutter: 32px;
+  }
+}
+@media (width >= 75rem) {
+  :root {
+    --gutter: max(48px, 4vw);
+  }
 }
 
 html {
@@ -41,7 +57,7 @@ body {
   background: var(--color-bg);
   color: var(--color-label);
   font-family: var(--font-sans);
-  font-feature-settings: "cv11", "ss01", "ss03";
+  font-stretch: 100%;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -76,7 +92,7 @@ img {
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  scrollbar-color: rgba(160, 166, 230, 0.2) transparent;
 }
 ::-webkit-scrollbar {
   width: 10px;
@@ -99,82 +115,76 @@ img {
   display: none;
 }
 
-/* Type scale from Apple's Human Interface Guidelines (size / line height / tracking). */
+/* Type scale (1.25 ratio). Titles run expanded and heavy; small meta runs slightly condensed. */
 @utility t-large {
   font-family: var(--font-display);
-  font-size: 34px;
-  line-height: 41px;
-  font-weight: 700;
-  letter-spacing: -0.022em;
+  font-size: 40px;
+  line-height: 42px;
+  font-weight: 800;
+  font-stretch: 118%;
+  letter-spacing: -0.03em;
 }
 @utility t-title1 {
   font-family: var(--font-display);
-  font-size: 28px;
+  font-size: 30px;
   line-height: 34px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-weight: 800;
+  font-stretch: 116%;
+  letter-spacing: -0.025em;
 }
 @utility t-title2 {
   font-family: var(--font-display);
   font-size: 22px;
-  line-height: 28px;
-  font-weight: 700;
-  letter-spacing: -0.016em;
+  line-height: 26px;
+  font-weight: 750;
+  font-stretch: 112%;
+  letter-spacing: -0.015em;
 }
 @utility t-title3 {
   font-family: var(--font-display);
-  font-size: 20px;
-  line-height: 25px;
-  font-weight: 600;
-  letter-spacing: -0.012em;
-}
-@utility t-headline {
-  font-size: 17px;
+  font-size: 18px;
   line-height: 22px;
-  font-weight: 600;
-  letter-spacing: -0.012em;
-}
-@utility t-body {
-  font-size: 17px;
-  line-height: 24px;
-  letter-spacing: -0.012em;
-}
-@utility t-callout {
-  font-size: 16px;
-  line-height: 21px;
+  font-weight: 700;
+  font-stretch: 110%;
   letter-spacing: -0.01em;
 }
-@utility t-sub {
+@utility t-headline {
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+@utility t-body {
+  font-size: 16px;
+  line-height: 25px;
+}
+@utility t-callout {
   font-size: 15px;
-  line-height: 20px;
-  letter-spacing: -0.008em;
+  line-height: 22px;
+}
+@utility t-sub {
+  font-size: 14px;
+  line-height: 21px;
 }
 @utility t-footnote {
   font-size: 13px;
   line-height: 18px;
-  letter-spacing: -0.004em;
 }
 @utility t-caption {
   font-size: 12px;
   line-height: 16px;
+  font-stretch: 94%;
 }
 @utility t-eyebrow {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 16px;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-stretch: 108%;
 }
 
-/* Page gutters match iOS readable margins and widen on larger screens. */
+/* Page gutters: phone margins, then 4% of the window on wide screens (no letterboxing). */
 @utility gutter {
-  padding-inline: max(20px, env(safe-area-inset-left));
-  @media (width >= 40rem) {
-    padding-inline: 32px;
-  }
-  @media (width >= 80rem) {
-    padding-inline: 48px;
-  }
+  padding-inline: var(--gutter);
 }
 
 /* Grouped inset list: the Settings-app container. */
@@ -197,10 +207,11 @@ img {
   gap: 8px;
   height: 44px;
   padding-inline: 20px;
-  border-radius: 999px;
+  border-radius: 8px;
   font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-weight: 650;
+  font-stretch: 106%;
+  letter-spacing: -0.005em;
   white-space: nowrap;
   transition:
     transform 0.2s var(--ease-apple),
@@ -214,7 +225,7 @@ img {
   background: var(--color-label);
   color: #000;
   &:hover {
-    background: rgba(255, 255, 255, 0.86);
+    background: #ffffff;
   }
 }
 @utility btn-tinted {
@@ -238,7 +249,7 @@ img {
   min-width: 0;
   max-width: 100%;
   padding-inline: 12px;
-  border-radius: 12px;
+  border-radius: 8px;
   background: var(--color-fill);
   color: var(--color-label);
   font-size: 15px;
@@ -250,13 +261,14 @@ img {
   display: inline-flex;
   flex: none;
   align-items: center;
-  min-height: 44px;
-  padding-inline: 18px;
-  border-radius: 999px;
-  background: var(--color-fill);
+  min-height: 40px;
+  padding-inline: 16px;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--color-hairline);
   color: var(--color-secondary);
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 550;
   white-space: nowrap;
   transition: background-color 0.2s, color 0.2s;
 }
@@ -266,7 +278,13 @@ img {
 .chip[aria-current="page"],
 .chip[aria-pressed="true"] {
   background: var(--color-label);
-  color: #000;
+  box-shadow: none;
+  color: var(--color-bg);
+}
+@media (pointer: coarse) {
+  .chip {
+    min-height: 44px;
+  }
 }
 
 /* Grows the pointer target of a visually small control to 44px. */
@@ -377,24 +395,27 @@ form[role="search"]:has(input:focus-visible) {
 
 /* Frosted materials */
 .glass {
-  background: rgba(22, 22, 24, 0.72);
+  background: rgba(20, 22, 42, 0.72);
   -webkit-backdrop-filter: saturate(180%) blur(24px);
   backdrop-filter: saturate(180%) blur(24px);
 }
 .glass-bar {
-  background: rgba(10, 10, 12, 0.7);
+  background: rgba(10, 11, 23, 0.78);
   -webkit-backdrop-filter: saturate(180%) blur(30px);
   backdrop-filter: saturate(180%) blur(30px);
 }
 .glass-light {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(238, 236, 244, 0.12);
   -webkit-backdrop-filter: saturate(180%) blur(24px);
   backdrop-filter: saturate(180%) blur(24px);
 }
 
+/* Title cards: Kairo's expanded, heavy display voice (titles on heroes and title pages). */
 .display {
   font-family: var(--font-display);
-  letter-spacing: -0.025em;
+  font-weight: 850;
+  font-stretch: 122%;
+  letter-spacing: -0.035em;
 }
 
 .text-balance {
@@ -419,7 +440,7 @@ form[role="search"]:has(input:focus-visible) {
   position: absolute;
   inset: 0;
   transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04), transparent);
+  background: linear-gradient(90deg, transparent, rgba(160, 166, 230, 0.06), transparent);
   animation: shimmer 1.6s infinite;
 }
 
@@ -543,3 +564,32 @@ body:has([data-reader]) .toaster {
 [data-player]:fullscreen { background: #000; }
 .movie-stage:fullscreen { aspect-ratio: auto; width: 100%; height: 100%; }
 body:has(.movie-immersive) { overflow: hidden; }
+
+/* Pages that open on hero art pull it under the header; the bar stays clear until you scroll. */
+body:has([data-billboard]) .site-header[data-top="true"] {
+  background: linear-gradient(to bottom, rgb(10 11 23 / 0.7), transparent);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+.billboard {
+  margin-top: calc(-52px - var(--safe-top));
+}
+/* On wide screens the first rows start inside the hero's fade instead of after a gap. */
+@media (width >= 64rem) {
+  .billboard + .after-billboard {
+    position: relative;
+    z-index: 10;
+    margin-top: -4.5rem;
+  }
+}
+
+/* Portrait features: the wall of covers drifts upward, looping on its duplicated half. */
+@keyframes mosaic-drift {
+  to {
+    transform: translateY(-50%);
+  }
+}
+.mosaic-drift {
+  animation: mosaic-drift 160s linear infinite;
+}

@@ -40,3 +40,6 @@ export function errorText(e: unknown, fallback: string) {
   const m = e instanceof Error ? e.message : "";
   return !m || /Server Components render|digest/i.test(m) ? fallback : m;
 }
+
+/** Days since the epoch: rotates "of the day" features once a day for everyone. */
+export const dayNumber = () => Math.floor(Date.now() / 86_400_000);

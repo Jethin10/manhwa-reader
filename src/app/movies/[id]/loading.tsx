@@ -1,6 +1,6 @@
 export default function Loading() {
   return (
-    <div className="gutter mx-auto max-w-[1440px] pt-14 sm:pt-20">
+    <div className="gutter mx-auto max-w-[2560px] pt-14 sm:pt-20">
       <p role="status" className="sr-only">
         Loading movie details…
       </p>

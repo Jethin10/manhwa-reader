@@ -13,7 +13,7 @@ const out = async (file, size, { padding = 0, round = false } = {}) => {
     img = img.composite([{ input: mask, blend: "dest-in" }]);
   }
   const buf = await img.png().toBuffer();
-  await sharp({ create: { width: size, height: size, channels: 4, background: padding ? "#0b0b0c" : { r: 0, g: 0, b: 0, alpha: 0 } } })
+  await sharp({ create: { width: size, height: size, channels: 4, background: padding ? "#0a0b17" : { r: 0, g: 0, b: 0, alpha: 0 } } })
     .composite([{ input: buf, gravity: "center" }])
     .png()
     .toFile(file);
@@ -35,7 +35,7 @@ if (existsSync(res)) {
     await out(`${res}/mipmap-${d}/ic_launcher_foreground.png`, Math.round(size * 2.25), { padding: 0.2 });
   }
 }
-// Native splash screens: black, icon centered, same sizes as the platform template.
+// Native splash screens: night ink, icon centered, same sizes as the platform template.
 import { readdirSync } from "node:fs";
 if (existsSync(res)) {
   for (const dir of readdirSync(res).filter((d) => d.startsWith("drawable"))) {
@@ -48,7 +48,7 @@ if (existsSync(res)) {
       .composite([{ input: Buffer.from(`<svg width="${size}" height="${size}"><rect width="${size}" height="${size}" rx="${size * 0.225}"/></svg>`), blend: "dest-in" }])
       .png()
       .toBuffer();
-    const out = await sharp({ create: { width, height, channels: 3, background: "#000000" } })
+    const out = await sharp({ create: { width, height, channels: 3, background: "#0a0b17" } })
       .composite([{ input: icon, gravity: "center" }])
       .png()
       .toBuffer();

@@ -20,7 +20,7 @@ import {
 } from "@/lib/anime-client";
 import { saveDataEnabled } from "@/lib/playback-policy";
 import type { PlaybackMedia } from "@/lib/anime-playback";
-import { CollectionPicker } from "./CollectionPicker";
+import { MyListButton } from "./MyListButton";
 import { Check } from "./PreferenceControls";
 import { usePreferences, updatePreferences } from "@/lib/preferences";
 import { coverSrc } from "@/lib/images";
@@ -468,7 +468,8 @@ export function AnimePlayer({
                 currentEpisode={episodeId}
                 audio={language}
               />
-              <CollectionPicker
+              <MyListButton
+                showStatus={false}
                 item={{
                   id: anime.id,
                   media: "anime",
@@ -502,7 +503,7 @@ export function AnimePlayer({
                       setOriginalPlayer(false);
                     }}
                     disabled={s.reachable === false}
-                    className={`min-h-10 rounded-full px-4 text-sm font-medium disabled:opacity-40 ${selected?.name === s.name ? "bg-accent text-white" : "bg-fill text-secondary"}`}
+                    className={`min-h-10 rounded-full px-4 text-sm font-medium disabled:opacity-40 ${selected?.name === s.name ? "bg-accent text-on-accent" : "bg-fill text-secondary"}`}
                   >
                     {s.name === "ZokoAnime" ? "Main player" : `Backup · ${s.name}`}
                     {s.reachable === false ? " · Down" : ""}
@@ -592,10 +593,10 @@ export function AnimePlayer({
                 key={e.id}
                 aria-current={e.id === episodeId ? "true" : undefined}
                 onClick={() => chooseEpisode(e.id)}
-                className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${e.id === episodeId ? "bg-accent/20 text-white" : watched.includes(e.id) ? "text-tertiary hover:bg-fill" : "text-label/90 hover:bg-fill"}`}
+                className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${e.id === episodeId ? "bg-accent/15 text-label" : watched.includes(e.id) ? "text-tertiary hover:bg-fill" : "text-label/90 hover:bg-fill"}`}
               >
                 <span
-                  className={`grid size-9 shrink-0 place-items-center rounded-lg text-xs tabular-nums ${e.id === episodeId ? "bg-accent text-white" : "bg-fill"}`}
+                  className={`grid size-9 shrink-0 place-items-center rounded-lg text-xs tabular-nums ${e.id === episodeId ? "bg-accent text-on-accent" : "bg-fill"}`}
                 >
                   {e.id === episodeId ? (
                     <PlayIcon className="ml-0.5 size-3.5" />

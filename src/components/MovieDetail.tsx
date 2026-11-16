@@ -9,7 +9,7 @@ import {
 } from "@/lib/movie-providers";
 import { useMovieHistory, useMoviePreferences } from "@/lib/movie-library";
 import { MovieFacts, MoviePoster } from "./MovieLibrary";
-import { CollectionPicker } from "./CollectionPicker";
+import { MyListButton } from "./MyListButton";
 import { ChevronLeft } from "./Icons";
 import { MovieProviderSettings } from "./MovieProviderSettings";
 
@@ -95,14 +95,14 @@ export function MovieDetail({
               referrerPolicy="no-referrer"
               className="size-full object-cover object-[center_20%] opacity-40"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/75 to-black/40" />
+            <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/75 to-bg/40" />
           </div>
         )}
-        <div className="gutter mx-auto max-w-[1440px] pt-2 pb-6 sm:pt-4 sm:pb-10">
+        <div className="gutter mx-auto max-w-[2560px] pt-2 pb-6 sm:pt-4 sm:pb-10">
           <Link
             href="/movies"
             prefetch={false}
-            className="t-sub -ml-1 inline-flex min-h-11 items-center gap-1 text-accent"
+            className="t-footnote -ml-1 inline-flex min-h-11 items-center gap-0.5 font-medium text-secondary transition-colors hover:text-label"
           >
             <ChevronLeft className="size-4" />
             Movies
@@ -140,9 +140,9 @@ export function MovieDetail({
                     ? resumeMinutes
                       ? `Resume from ${resumeMinutes} min`
                       : "Resume"
-                    : "Watch movie"}
+                    : "Play"}
                 </button>
-                <CollectionPicker
+                <MyListButton
                   item={{
                     id: movie.id,
                     title: movie.title,
@@ -172,7 +172,7 @@ export function MovieDetail({
           </div>
         </div>
       </section>
-      <div className="gutter mx-auto max-w-[1440px]">
+      <div className="gutter mx-auto max-w-[2560px]">
         <div id="movie-player" className="mt-6 scroll-mt-20">
           {watching && !copiesDone ? (
             <div className="skeleton aspect-video rounded-2xl">

@@ -8,14 +8,15 @@ import {
   type LatestEntry,
   type SeriesType,
 } from "@/lib/catalog";
-import { ContinueReading } from "@/components/ContinueReading";
-import { AnimeCard, ContinueWatching } from "@/components/AnimeLibrary";
-import { ContinueMovies, MovieCard } from "@/components/MovieLibrary";
+import { AnimeCard } from "@/components/AnimeLibrary";
+import { MovieCard } from "@/components/MovieLibrary";
+import { ContinueRow, MyListRow } from "@/components/ContinueRow";
 import { Billboard, type BillboardItem } from "@/components/Billboard";
 import { browseAnime } from "@/lib/anime";
 import { browseMovies } from "@/lib/movies";
 import type { MovieCategory } from "@/lib/movie-types";
 import { coverSrc } from "@/lib/images";
+import { dayNumber } from "@/lib/format";
 import { Cover, SeriesCard } from "@/components/SeriesCard";
 import { Shelf, ShelfItem } from "@/components/Shelf";
 import { TimeAgo } from "@/components/TimeAgo";
@@ -33,20 +34,18 @@ async function browseOrEmpty(opts: BrowseOpts) {
 
 export default function Home() {
   return (
-    <div className="space-y-10 pb-8 lg:space-y-12">
+    <div className="pb-8">
       <Suspense fallback={<HeroSkeleton />}>
         <Feature />
       </Suspense>
-      <ContinueReading />
-      <ContinueWatching />
-      <div className="gutter mx-auto max-w-[1440px] empty:hidden">
-        <ContinueMovies />
-      </div>
-      <Suspense fallback={<ShelfSkeleton />}>
-        <MovieShelf title="Popular Movies" category="popular" />
-      </Suspense>
+      <div className="after-billboard mt-8 space-y-8 lg:space-y-10">
       <Suspense fallback={<ShelfSkeleton />}>
         <AnimeShelf title="Trending Anime" category="popular" />
+      </Suspense>
+      <ContinueRow />
+      <MyListRow />
+      <Suspense fallback={<ShelfSkeleton />}>
+        <MovieShelf title="Popular Movies" category="popular" />
       </Suspense>
       <Suspense fallback={<ShelfSkeleton />}>
         <TopCharts />
@@ -78,11 +77,11 @@ export default function Home() {
       <Suspense fallback={<LatestSkeleton />}>
         <Latest />
       </Suspense>
+      </div>
     </div>
   );
 }
 
-const dayNumber = () => Math.floor(Date.now() / 86_400_000);
 
 /** One feature a day, from movies or, if they're unavailable, anime. */
 async function Feature() {
@@ -102,22 +101,23 @@ async function Feature() {
     item = {
       title: m.title,
       image: m.background,
-      kicker: "Movie of the day",
+      kicker: "Tonight’s movie",
       facts: [m.year, m.rating && `IMDb ${m.rating}`, m.runtime].filter(Boolean),
       description: m.description,
       play: `/movies/${m.id}?watch=1`,
       info: `/movies/${m.id}`,
+      save: { id: m.id, media: "movie", title: m.title, cover: m.poster, type: "Movie" },
     };
   } else if (shows.length) {
     const a = shows[day % shows.length];
     item = {
       title: a.title,
       image: coverSrc(a.banner ?? a.cover, 1280),
-      kicker: "Anime of the day",
+      kicker: "Tonight’s anime",
       facts: [`${a.sub} episodes`],
       description: "",
       play: `/anime/${a.id}`,
-      info: `/anime/${a.id}`,
+      save: { id: a.id, media: "anime", title: a.title, cover: a.cover, type: "Anime" },
     };
   }
   return item ? <Billboard item={item} /> : null;
@@ -191,8 +191,9 @@ async function TopCharts() {
                   <span className="t-headline w-5 shrink-0 text-center tabular-nums">{c * 3 + r + 1}</span>
                   <span className="min-w-0 flex-1">
                     <span className="t-sub line-clamp-1 font-medium">{s.title}</span>
-                    <span className="t-footnote line-clamp-1 text-secondary">
-                      {[s.type, s.tags.find((t) => t.group === "genre")?.name].filter(Boolean).join(" · ")}
+                    <span className="t-caption flex gap-2 truncate text-secondary">
+                      <span className="text-label/75">{s.type}</span>
+                      <span>{s.tags.find((t) => t.group === "genre")?.name}</span>
                     </span>
                   </span>
                 </Link>
@@ -240,11 +241,14 @@ async function Latest() {
   const entries = await getLatestUpdates("manhwa").catch(() => []);
   if (!entries.length) return null;
   return (
-    <section className="gutter mx-auto max-w-[1440px]">
+    <section className="gutter mx-auto max-w-[2560px]">
       <div className="mb-2 flex items-baseline justify-between">
-        <h2 className="t-title2">Latest Updates</h2>
-        <Link href="/series?order=latestUploadedChapter" className="t-callout text-accent">
-          See All
+        <h2 className="t-title3 sm:t-title2">Latest Chapters</h2>
+        <Link
+          href="/series?order=latestUploadedChapter"
+          className="t-footnote font-medium text-secondary transition-colors hover:text-label"
+        >
+          See all
         </Link>
       </div>
       <div className="grid gap-x-10 sm:grid-cols-2 xl:grid-cols-3">
@@ -303,22 +307,18 @@ function LatestRow({ entry: { series, chapters } }: { entry: LatestEntry }) {
 }
 
 function HeroSkeleton() {
-  return (
-    <div className="gutter mx-auto max-w-[1440px] pt-3 lg:pt-6">
-      <div className="skeleton h-[min(118vw,520px)] rounded-[22px] md:h-[440px] lg:h-[480px]" />
-    </div>
-  );
+  return <div className="billboard skeleton min-h-[min(78svh,680px)] sm:min-h-[min(80svh,780px)]" />;
 }
 
 function ShelfSkeleton() {
   return (
-    <div className="gutter mx-auto max-w-[1440px] space-y-3">
+    <div className="gutter mx-auto max-w-[2560px] space-y-3">
       <div className="skeleton h-7 w-48 rounded-md" />
       <div className="flex gap-4 overflow-hidden">
         {Array.from({ length: 8 }, (_, i) => (
           <div
             key={i}
-            className="skeleton aspect-[2/3] w-[132px] shrink-0 rounded-[12px] sm:w-[164px]"
+            className="skeleton aspect-[2/3] w-[30vw] max-w-[148px] shrink-0 rounded-[6px] sm:w-[164px] sm:max-w-none xl:w-[176px]"
           />
         ))}
       </div>
@@ -328,7 +328,7 @@ function ShelfSkeleton() {
 
 function LatestSkeleton() {
   return (
-    <div className="gutter mx-auto grid max-w-[1440px] gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="gutter mx-auto grid max-w-[2560px] gap-4 sm:grid-cols-2 xl:grid-cols-3">
       {Array.from({ length: 9 }, (_, i) => (
         <div key={i} className="skeleton h-[140px] rounded-xl" />
       ))}

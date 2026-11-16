@@ -4,10 +4,10 @@ import { useMemo, useState } from "react";
 import type { Movie, MovieCategory } from "@/lib/movie-types";
 import { MOVIE_CATEGORIES } from "@/lib/movie-types";
 import { MOVIE_PROVIDERS } from "@/lib/movie-providers";
-import { MovieCard, ContinueMovies, MovieFacts } from "./MovieLibrary";
+import { MovieCard } from "./MovieLibrary";
 import { MovieRetry } from "./MovieRetry";
 import { GearIcon } from "./Icons";
-import { SearchBox } from "./SearchBox";
+import { SectionHeader } from "./SectionHeader";
 
 export function MovieBrowse({
   items,
@@ -43,81 +43,30 @@ export function MovieBrowse({
         ),
     [items, genre, sort],
   );
-  const featured = !q && page === 1 ? items[0] : null;
-  // The featured movie opens the page; don't repeat it as the first poster.
-  const grid =
-    featured && !genre && sort === "catalog" ? shown.slice(1) : shown;
+  const grid = shown;
   const categoryLabel = MOVIE_CATEGORIES.find(([key]) => key === category)?.[1];
   const query = (nextPage: number) =>
     `/movies?${new URLSearchParams({ category, ...(q ? { q } : {}), page: String(nextPage) })}`;
   return (
     <div className="pb-12">
-      {/* z-10 keeps search suggestions above the posters that follow. */}
-      <section className="relative z-10">
-        {featured?.background && (
-          <div className="absolute inset-0 -z-10 overflow-hidden" aria-hidden>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={featured.background}
-              alt=""
-              fetchPriority="high"
-              referrerPolicy="no-referrer"
-              className="size-full object-cover object-[center_20%] opacity-55"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-black/30 lg:bg-gradient-to-r lg:via-black/70 lg:to-transparent" />
-            <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black to-transparent" />
-          </div>
-        )}
-        <div className="gutter mx-auto max-w-[1440px] pt-5 pb-6 sm:pt-8 lg:pb-12">
-          <div className="flex items-center justify-between gap-3">
-            <h1 className="t-large">Movies</h1>
+      <div className="gutter mx-auto max-w-[2560px]">
+        <SectionHeader
+          title={q ? `Results for “${q}”` : (categoryLabel ?? "Movies")}
+          back={{ href: "/movies", label: "Movies" }}
+          actions={
             <Link
               href="/movies/providers"
-              aria-label="Playback settings"
-              className="btn glass-light shrink-0 px-4 text-[14px] font-medium"
+              prefetch={false}
+              className="btn btn-gray shrink-0 px-4 text-[14px] font-medium"
             >
               <GearIcon className="size-4" />
-              Playback<span className="-ml-1 hidden sm:inline">settings</span>
+              Playback settings
             </Link>
-          </div>
-          {/* The header carries this same search from the lg breakpoint up. */}
-          <div className="mt-4 max-w-xl lg:hidden">
-            <SearchBox large section="movies" />
-          </div>
-          {featured && (
-            <div className="mt-20 max-w-2xl sm:mt-28 lg:mt-40">
-              <h2 className="display text-balance text-4xl leading-[1.05] font-bold sm:text-6xl">
-                {featured.title}
-              </h2>
-              <MovieFacts
-                className="t-footnote mt-3"
-                items={[
-                  featured.year,
-                  featured.rating ? `IMDb ${featured.rating}` : "",
-                  featured.runtime,
-                ]}
-              />
-              {featured.description && (
-                <p className="t-sub mt-3 line-clamp-2 max-w-xl text-white/75 sm:line-clamp-3">
-                  {featured.description}
-                </p>
-              )}
-              <Link
-                href={`/movies/${featured.id}`}
-                prefetch={false}
-                className="btn btn-primary mt-5"
-              >
-                View movie
-              </Link>
-            </div>
-          )}
-        </div>
-      </section>
-      <div className="gutter mx-auto max-w-[1440px]">
-        <ContinueMovies />
+          }
+        />
         <nav
           aria-label="Movie categories"
-          className="no-scrollbar -mx-5 mt-6 flex gap-2 overflow-x-auto px-5 py-1 sm:mx-0 sm:px-0"
+          className="no-scrollbar -mx-5 mt-4 flex gap-2 overflow-x-auto px-5 py-1 sm:mx-0 sm:px-0"
         >
           {MOVIE_CATEGORIES.map(([key, label]) => (
             <Link
@@ -131,12 +80,9 @@ export function MovieBrowse({
             </Link>
           ))}
         </nav>
-        <div className="mt-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
           <div className="min-w-0">
-            <h2 className="t-title2 break-words">
-              {q ? `Results for “${q}”` : categoryLabel}
-            </h2>
-            <p className="t-footnote mt-1 text-secondary">
+            <p className="t-footnote text-secondary">
               {q
                 ? `${items.length} ${items.length === 1 ? "match" : "matches"}`
                 : category === "telugu" || category === "indian"
@@ -224,7 +170,7 @@ export function MovieBrowse({
           )
         )}
         {grid.length > 0 && (
-          <div className="mt-6 grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 sm:gap-x-4 md:grid-cols-4 lg:grid-cols-6">
+          <div className="mt-6 grid grid-cols-3 gap-x-2.5 gap-y-6 sm:grid-cols-4 sm:gap-x-3.5 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 min-[1800px]:grid-cols-9">
             {grid.slice(0, limit).map((movie) => (
               <MovieCard key={movie.id} movie={movie} />
             ))}

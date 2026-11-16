@@ -1,117 +1,221 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { SearchSections } from "@/components/SearchSections";
-import { ChevronRight } from "@/components/Icons";
+import { connection } from "next/server";
+import { browseAnime } from "@/lib/anime";
+import { browseSeries, getStats } from "@/lib/catalog";
+import { searchMovies } from "@/lib/movies";
 import { PROVIDERS } from "@/lib/sources";
+import { AnimeCard } from "@/components/AnimeLibrary";
+import { MovieCard } from "@/components/MovieLibrary";
+import { SearchBox } from "@/components/SearchBox";
+import { SeriesCard } from "@/components/SeriesCard";
+import { Shelf, ShelfItem } from "@/components/Shelf";
 
 export const metadata = { title: "Search" };
 
-const CATEGORIES = [
-  {
-    label: "Manhwa",
-    href: "/series?type=manhwa",
-    tint: "from-[#0a84ff] to-[#0040a8]",
-  },
-  { label: "Manga", href: "/manga", tint: "from-[#ff375f] to-[#8f0f2c]" },
-  {
-    label: "Manhua",
-    href: "/series?type=manhua",
-    tint: "from-[#ff9f0a] to-[#9c4a00]",
-  },
-  { label: "Anime", href: "/anime", tint: "from-[#bf5af2] to-[#5b1b80]" },
-  { label: "Movies", href: "/movies", tint: "from-[#0a84ff] to-[#16456c]" },
-  {
-    label: "New Releases",
-    href: "/series?order=latestUploadedChapter&type=all",
-    tint: "from-[#30d158] to-[#0b6b2a]",
-  },
-  {
-    label: "Top Rated",
-    href: "/series?order=rating",
-    tint: "from-[#64d2ff] to-[#0a5f80]",
-  },
-  {
-    label: "Completed",
-    href: "/series?status=completed&source=mangadex",
-    tint: "from-[#5e5ce6] to-[#26246e]",
-  },
-  {
-    label: "Recently Added",
-    href: "/series?order=createdAt",
-    tint: "from-[#ff6961] to-[#7a1d18]",
-  },
+const EXPLORE = [
+  { label: "Trending anime", href: "/anime?category=popular" },
+  { label: "Airing now", href: "/anime?category=airing" },
+  { label: "English dub", href: "/anime?category=dub" },
+  { label: "Popular movies", href: "/movies?category=popular" },
+  { label: "New movies", href: "/movies?category=new" },
+  { label: "Telugu picks", href: "/movies?category=telugu" },
+  { label: "Indian picks", href: "/movies?category=indian" },
+  { label: "Popular manhwa", href: "/series?type=manhwa&order=followedCount" },
+  { label: "Top rated manhwa", href: "/series?order=rating" },
+  { label: "Latest chapters", href: "/series?order=latestUploadedChapter&type=all" },
+  { label: "Manga", href: "/manga" },
+  { label: "Manhua", href: "/series?type=manhua" },
+  { label: "Completed series", href: "/series?status=completed&source=mangadex" },
+  { label: "Recently added", href: "/series?order=createdAt" },
 ];
 
-export default function SearchPage() {
+export default function SearchPage({ searchParams }: PageProps<"/search">) {
   return (
-    <div className="gutter mx-auto max-w-[1100px] pt-6 lg:pt-12">
-      <h1 className="t-large">Search</h1>
-      <div className="mt-4">
-        <Suspense fallback={<div className="skeleton h-32 rounded-xl" />}>
-          <SearchSections />
-        </Suspense>
-      </div>
-
-      <h2 className="t-title3 mt-10">Browse Categories</h2>
-      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-        {CATEGORIES.map((c) => (
-          <Link
-            key={c.label}
-            href={c.href}
-            className={`pressable relative flex aspect-[16/10] items-end overflow-hidden rounded-[14px] bg-gradient-to-br p-4 ${c.tint}`}
-          >
-            <span className="t-headline relative z-10 text-white">
-              {c.label}
-            </span>
-            <span
-              className="absolute -top-6 -right-6 size-24 rounded-full bg-white/10"
-              aria-hidden
-            />
-          </Link>
-        ))}
-      </div>
-
-      <h2 className="t-title3 mt-10">Sources</h2>
-      <p className="t-footnote mt-1 text-secondary">
-        Titles are matched across every source. Each chapter opens from the
-        highest-quality copy available, and switches to another source if one is
-        down.
-      </p>
-      <ul className="grouped mt-4">
-        {PROVIDERS.map((p) => (
-          <li key={p.id} className="row-divider">
-            <Link
-              href={`/series?source=${p.id}&type=all`}
-              className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-white/[0.04] active:bg-white/[0.08]"
-            >
-              <span className="grid size-8 place-items-center rounded-[8px] bg-fill text-[13px] font-semibold">
-                {p.name[0]}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="t-callout block">{p.name}</span>
-                <span className="t-footnote block text-secondary">
-                  {p.note}
-                </span>
-              </span>
-              <QualityDots value={p.quality} />
-              <ChevronRight className="size-4 text-tertiary" />
-            </Link>
-          </li>
-        ))}
-      </ul>
+    <div className="pt-3 pb-8 lg:pt-8">
+      <Suspense fallback={<SearchHead q="" />}>
+        <Results searchParams={searchParams} />
+      </Suspense>
     </div>
   );
 }
 
-function QualityDots({ value }: { value: number }) {
+function SearchHead({ q }: { q: string }) {
   return (
-    <span className="flex gap-[3px]" aria-label={`Image quality ${value} of 5`}>
-      {Array.from({ length: 5 }, (_, i) => (
-        <span
-          key={i}
-          className={`size-[5px] rounded-full ${i < value ? "bg-accent" : "bg-fill-2"}`}
-        />
+    <div className="gutter mx-auto max-w-[2560px]">
+      <h1 className="t-title1 sm:t-large">Search</h1>
+      <div className="mt-4 max-w-2xl">
+        <SearchBox key={q} large autoFocus={!q} initial={q} />
+      </div>
+    </div>
+  );
+}
+
+async function Results({ searchParams }: { searchParams: PageProps<"/search">["searchParams"] }) {
+  const sp = await searchParams;
+  const q = (typeof sp.q === "string" ? sp.q : "").trim().slice(0, 100);
+  return (
+    <>
+      <SearchHead q={q} />
+      {q ? (
+        <div className="mt-8 space-y-8 lg:space-y-10">
+          <Suspense fallback={<RowSkeleton title="Anime" />}>
+            <AnimeResults q={q} />
+          </Suspense>
+          <Suspense fallback={<RowSkeleton title="Movies" />}>
+            <MovieResults q={q} />
+          </Suspense>
+          <Suspense fallback={<RowSkeleton title="Manhwa & Manga" />}>
+            <ComicResults q={q} />
+          </Suspense>
+          <p className="gutter t-footnote mx-auto max-w-[2560px] text-secondary">
+            Not finding it? Try the original or English title, or an IMDb ID
+            such as tt0111161 for movies.
+          </p>
+        </div>
+      ) : (
+        <Explore />
+      )}
+    </>
+  );
+}
+
+async function AnimeResults({ q }: { q: string }) {
+  await connection();
+  const items = await browseAnime(q, "popular", 1)
+    .then((r) => r.items)
+    .catch(() => []);
+  return (
+    <ResultRow title="Anime" href={`/anime?q=${encodeURIComponent(q)}`} empty={!items.length}>
+      {items.slice(0, 20).map((a) => (
+        <ShelfItem key={a.id}>
+          <AnimeCard anime={a} />
+        </ShelfItem>
       ))}
-    </span>
+    </ResultRow>
+  );
+}
+
+async function MovieResults({ q }: { q: string }) {
+  await connection();
+  const items = await searchMovies(q)
+    .then((r) => r.items)
+    .catch(() => []);
+  return (
+    <ResultRow title="Movies" href={`/movies?q=${encodeURIComponent(q)}`} empty={!items.length}>
+      {items.slice(0, 20).map((m) => (
+        <ShelfItem key={m.id}>
+          <MovieCard movie={m} />
+        </ShelfItem>
+      ))}
+    </ResultRow>
+  );
+}
+
+async function ComicResults({ q }: { q: string }) {
+  await connection();
+  const series = await browseSeries({ q, type: "all", order: "relevance", limit: 20 })
+    .then((r) => r.series)
+    .catch(() => []);
+  const stats: Awaited<ReturnType<typeof getStats>> = series.length
+    ? await getStats(series).catch(() => ({}))
+    : {};
+  return (
+    <ResultRow
+      title="Manhwa & Manga"
+      href={`/series?type=all&q=${encodeURIComponent(q)}`}
+      empty={!series.length}
+    >
+      {series.slice(0, 20).map((s) => (
+        <ShelfItem key={s.id}>
+          <SeriesCard series={s} stats={stats[s.id]} />
+        </ShelfItem>
+      ))}
+    </ResultRow>
+  );
+}
+
+function ResultRow({
+  title,
+  href,
+  empty,
+  children,
+}: {
+  title: string;
+  href: string;
+  empty: boolean;
+  children: React.ReactNode;
+}) {
+  if (empty)
+    return (
+      <section className="gutter mx-auto max-w-[2560px]">
+        <h2 className="t-title3 sm:t-title2">{title}</h2>
+        <p className="t-footnote mt-1 text-secondary">No matches.</p>
+      </section>
+    );
+  return (
+    <Shelf title={title} href={href}>
+      {children}
+    </Shelf>
+  );
+}
+
+function RowSkeleton({ title }: { title: string }) {
+  return (
+    <section className="gutter mx-auto max-w-[2560px]" aria-busy>
+      <h2 className="t-title3 flex min-h-11 items-center sm:t-title2">{title}</h2>
+      <div className="mt-2.5 flex gap-2.5 overflow-hidden sm:gap-3.5">
+        {Array.from({ length: 8 }, (_, i) => (
+          <div
+            key={i}
+            className="skeleton aspect-[2/3] w-[30vw] max-w-[148px] shrink-0 rounded-[6px] sm:w-[164px] sm:max-w-none xl:w-[176px]"
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function Explore() {
+  return (
+    <div className="gutter mx-auto mt-10 max-w-[2560px]">
+      <h2 className="t-title3 sm:t-title2">Explore</h2>
+      <ul className="mt-4 flex flex-wrap gap-2">
+        {EXPLORE.map((c) => (
+          <li key={c.label}>
+            <Link href={c.href} prefetch={false} className="chip">
+              {c.label}
+            </Link>
+          </li>
+        ))}
+      </ul>
+
+      <details className="disclosure mt-12 max-w-2xl border-t border-hairline pt-2">
+        <summary className="t-footnote text-secondary">
+          Where comics come from
+        </summary>
+        <p className="t-footnote pb-3 text-secondary">
+          Titles are matched across every source. Each chapter opens from the
+          highest-quality copy available, and switches to another source if one
+          is down.
+        </p>
+        <ul className="grouped mb-4">
+          {PROVIDERS.map((p) => (
+            <li key={p.id} className="row-divider">
+              <Link
+                href={`/series?source=${p.id}&type=all`}
+                prefetch={false}
+                className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-white/[0.04]"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="t-callout block">{p.name}</span>
+                  <span className="t-footnote block text-secondary">{p.note}</span>
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </details>
+    </div>
   );
 }

@@ -17,6 +17,7 @@ import { removeWatch, useWatchHistory } from "./AnimeLibrary";
 import { useMovieHistory, removeMovieHistory } from "@/lib/movie-library";
 import { CollectionPicker } from "./CollectionPicker";
 import { Cover } from "./SeriesCard";
+import { TitleCard } from "./TitleCard";
 import { DownloadGlyph } from "./ChapterList";
 import { GearIcon } from "./Icons";
 import { useDownloads } from "@/lib/downloads";
@@ -100,9 +101,9 @@ export function Library() {
     <div className="pb-16">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="t-large">Library</h1>
+          <h1 className="t-title1 sm:t-large">My List</h1>
           <p className="t-sub mt-1 text-secondary">
-            {merged.size} saved titles on this device
+            {merged.size} {merged.size === 1 ? "title" : "titles"} saved on this device
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -115,7 +116,7 @@ export function Library() {
             </svg>
             Updates
             {totalUnread > 0 && (
-              <span className="rounded-full bg-accent px-1.5 text-[11px] font-semibold text-white tabular-nums">
+              <span className="rounded-full bg-accent px-1.5 text-[11px] font-semibold text-on-accent tabular-nums">
                 {totalUnread > 999 ? "999+" : totalUnread}
               </span>
             )}
@@ -127,7 +128,7 @@ export function Library() {
             <DownloadGlyph className="size-4" />
             Downloads
             {downloads.length > 0 && (
-              <span className="rounded-full bg-accent px-1.5 text-[11px] font-semibold text-white tabular-nums">
+              <span className="rounded-full bg-accent px-1.5 text-[11px] font-semibold text-on-accent tabular-nums">
                 {downloads.length}
               </span>
             )}
@@ -146,7 +147,7 @@ export function Library() {
         {[
           ["all", "All"],
           ["manga", "Manga"],
-          ["manhwa", "Manhwa & comics"],
+          ["manhwa", "Manhwa"],
           ["anime", "Anime"],
           ["movie", "Movies"],
         ].map(([id, label]) => (
@@ -212,11 +213,35 @@ export function Library() {
         <div
           className={
             view === "grid"
-              ? "mt-7 grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
+              ? "mt-6 grid grid-cols-3 gap-x-2.5 gap-y-6 sm:grid-cols-4 sm:gap-x-3.5 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 min-[1800px]:grid-cols-9"
               : "mt-7 space-y-3"
           }
         >
-          {entries.slice(0, limit).map((c) => (
+          {entries.slice(0, limit).map((c) =>
+            view === "grid" ? (
+              <div key={`${c.media}:${c.id}`} className="relative min-w-0">
+                <TitleCard
+                  href={resume(c)}
+                  title={c.title}
+                  cover={c.cover}
+                  direct={c.media === "movie"}
+                  meta={[
+                    c.media === "anime" ? "Anime" : c.type,
+                    c.media === "series" &&
+                      (unread[c.id] ?? 0) > 0 &&
+                      `${unread[c.id]} new`,
+                  ]}
+                />
+                {c.media === "series" && (unread[c.id] ?? 0) > 0 && (
+                  <span
+                    className="pointer-events-none absolute top-1.5 left-1.5 min-w-6 rounded-md bg-accent px-1.5 py-0.5 text-center text-[12px] font-bold text-on-accent tabular-nums shadow"
+                    aria-hidden
+                  >
+                    {unread[c.id]}
+                  </span>
+                )}
+              </div>
+            ) : (
             <article
               key={`${c.media}:${c.id}`}
               className={
@@ -238,7 +263,7 @@ export function Library() {
                 />
                 {c.media === "series" && (unread[c.id] ?? 0) > 0 && (
                   <span
-                    className="absolute top-1.5 left-1.5 min-w-6 rounded-md bg-accent px-1.5 py-0.5 text-center text-[12px] font-bold text-white tabular-nums shadow"
+                    className="absolute top-1.5 left-1.5 min-w-6 rounded-md bg-accent px-1.5 py-0.5 text-center text-[12px] font-bold text-on-accent tabular-nums shadow"
                     aria-label={`${unread[c.id]} unread`}
                   >
                     {unread[c.id]}
@@ -272,14 +297,15 @@ export function Library() {
                 )}
               </div>
             </article>
-          ))}
+            ),
+          )}
         </div>
       ) : (
         <div className="mt-7 rounded-2xl bg-card p-10 text-center">
           <p className="text-sm text-secondary">
             {merged.size
               ? "No titles match these filters."
-              : "Save comics, anime or movies to build your library."}
+              : "Tap + My List on any title to keep it here."}
           </p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <Link href="/manga" prefetch={false} className="btn btn-gray">

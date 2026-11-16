@@ -105,7 +105,7 @@ export function AppUpdate() {
       </button>
       <a
         href={update.url}
-        className="pressable rounded-full bg-accent px-4 py-1.5 text-[15px] font-semibold text-white"
+        className="pressable rounded-full bg-accent px-4 py-1.5 text-[15px] font-semibold text-on-accent"
       >
         Update
       </a>
