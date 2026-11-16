@@ -5,16 +5,24 @@ export function MediaSheet({
   title,
   onClose,
   children,
+  footer,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  /** Pinned to the bottom of the sheet, for the main action. */
+  footer?: ReactNode;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const unmounting = useRef(false);
   useEffect(() => {
     const el = dialog.current;
+    unmounting.current = false;
     el?.showModal();
-    return () => el?.close();
+    return () => {
+      unmounting.current = true;
+      el?.close();
+    };
   }, []);
   return (
     <dialog
@@ -22,7 +30,10 @@ export function MediaSheet({
       className="media-sheet"
       aria-label={title}
       onCancel={onClose}
-      onClose={onClose}
+      // Closing it ourselves on unmount (or a dev re-mount) isn't the user closing it.
+      onClose={(event) => {
+        if (!unmounting.current && !event.currentTarget.open) onClose();
+      }}
       onClick={(event) => {
         if (event.target === event.currentTarget) {
           const box = event.currentTarget.getBoundingClientRect();
@@ -48,6 +59,11 @@ export function MediaSheet({
         </button>
       </header>
       <div className="space-y-5 p-5">{children}</div>
+      {footer && (
+        <footer className="sticky bottom-0 z-10 border-t border-hairline bg-card px-5 py-3">
+          {footer}
+        </footer>
+      )}
     </dialog>
   );
 }

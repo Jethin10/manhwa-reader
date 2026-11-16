@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Anime, Episode } from "@/lib/anime";
 import { loadMedia } from "@/lib/anime-client";
 import { inspectHlsDownloadOptions } from "@/lib/offline-hls";
@@ -13,6 +13,20 @@ import { cacheOfflineShell } from "@/lib/downloads";
 import { toast } from "@/lib/toast";
 import { MediaSheet } from "./MediaSheet";
 import { DownloadGlyph } from "./ChapterList";
+
+type Quality = VideoDownloadOptions["quality"];
+const LIMITS = [480, 720, 1080, 2160] as const;
+const BATCH = 200;
+const QUALITY_PREF = "mr:download-quality";
+
+function storedQuality(): Quality {
+  try {
+    const value = localStorage.getItem(QUALITY_PREF);
+    if (value && ["480", "720", "1080", "2160", "best"].includes(value))
+      return value as Quality;
+  } catch {}
+  return "1080";
+}
 
 export default function VideoDownloadButton(props: {
   anime: Anime;
@@ -36,6 +50,11 @@ export default function VideoDownloadButton(props: {
   );
 }
 
+type Status =
+  | { kind: "saved" }
+  | { kind: "active"; progress: number; state: string }
+  | { kind: "unavailable" };
+
 function DownloadSheet({
   anime,
   episodes,
@@ -54,15 +73,22 @@ function DownloadSheet({
     0,
     episodes.findIndex((episode) => episode.id === currentEpisode),
   );
-  const [scope, setScope] = useState("episode");
-  const [from, setFrom] = useState(at + 1),
-    [to, setTo] = useState(Math.min(episodes.length, at + 5));
   const [audio, setAudio] = useState(initialAudio),
     [audioTrack, setAudioTrack] = useState("");
-  const [quality, setQuality] =
-    useState<VideoDownloadOptions["quality"]>("1080");
+  const [quality, setQualityState] = useState<Quality>(storedQuality);
+  const setQuality = (value: Quality) => {
+    setQualityState(value);
+    try {
+      localStorage.setItem(QUALITY_PREF, value);
+    } catch {}
+  };
+  const [picked, setPicked] = useState<Set<string>>(
+    () => new Set(episodes[at] ? [episodes[at].id] : []),
+  );
   const [attempt, setAttempt] = useState(0),
     [submitting, setSubmitting] = useState(false);
+
+  // Quality and language options come from the episode on screen.
   const key = `${audio}|${attempt}`;
   const [inspection, setInspection] = useState<{
     key: string;
@@ -92,33 +118,111 @@ function DownloadSheet({
     return () => controller.abort();
   }, [currentEpisode, audio, key]);
   const ready = inspection?.key === key;
-  const effectiveQuality =
-    ready && !inspection.heights.length ? "best" : quality;
-  const qualityAvailable =
-    !ready ||
-    effectiveQuality === "best" ||
-    inspection.heights.some((height) => height <= Number(effectiveQuality));
-  const chosen =
-    scope === "episode"
-      ? episodes.slice(at, at + 1)
-      : scope === "next"
-        ? episodes.slice(at, at + 5)
-        : scope === "all"
-          ? episodes
-          : episodes.slice(Math.max(0, from - 1), Math.max(from, to));
-  const existing = new Set(
-    [...Object.values(saved), ...jobs]
-      .filter(
-        (item) =>
-          item.anime.id === anime.id &&
-          item.audio === audio &&
-          item.quality === effectiveQuality &&
-          (item.audioTrack ?? "") === audioTrack,
+
+  // One button per quality limit that actually changes the result, labelled
+  // with the resolution it saves (e.g. a 540p source shows as "540p").
+  const qualityChoices = useMemo(() => {
+    if (!ready || !inspection.heights.length) return [];
+    const heights = [...inspection.heights].sort((a, b) => a - b);
+    const choices: { value: Quality; height: number }[] = [];
+    for (const limit of LIMITS) {
+      const best = heights.filter((height) => height <= limit).pop();
+      if (best && !choices.some((choice) => choice.height === best))
+        choices.push({ value: String(limit) as Quality, height: best });
+    }
+    const top = heights[heights.length - 1];
+    if (!choices.some((choice) => choice.height === top))
+      choices.push({ value: "best", height: top });
+    return choices;
+  }, [ready, inspection]);
+  const effectiveQuality: Quality = !ready
+    ? quality
+    : !qualityChoices.length
+      ? "best"
+      : qualityChoices.some((choice) => choice.value === quality)
+        ? quality
+        : (qualityChoices
+            .filter(
+              (choice) =>
+                choice.value !== "best" &&
+                choice.height <= (quality === "best" ? 9999 : Number(quality)),
+            )
+            .pop()?.value ?? qualityChoices[0].value);
+
+  // What each episode already is on this device, for this version.
+  const statuses = useMemo(() => {
+    const map = new Map<string, Status>();
+    for (const item of Object.values(saved))
+      if (item.anime.id === anime.id && item.audio === audio)
+        map.set(item.episode.id, { kind: "saved" });
+    for (const job of jobs)
+      if (
+        job.anime.id === anime.id &&
+        job.audio === audio &&
+        !map.has(job.episode.id)
       )
-      .map((item) => item.episode.id),
+        map.set(job.episode.id, {
+          kind: "active",
+          progress: job.total ? job.done / job.total : 0,
+          state: job.state,
+        });
+    if (audio === "dub" && anime.dub > 0 && anime.dub < episodes.length)
+      episodes
+        .slice(anime.dub)
+        .forEach(
+          (episode) =>
+            !map.has(episode.id) &&
+            map.set(episode.id, { kind: "unavailable" }),
+        );
+    return map;
+  }, [saved, jobs, anime.id, anime.dub, audio, episodes]);
+  const selectable = (episode: Episode) => !statuses.has(episode.id);
+  const chosen = episodes.filter(
+    (episode) => picked.has(episode.id) && selectable(episode),
   );
-  const pending = chosen.filter((episode) => !existing.has(episode.id));
-  const batch = pending.slice(0, 200);
+  const batch = chosen.slice(0, BATCH);
+  const savedCount = episodes.filter(
+    (episode) => statuses.get(episode.id)?.kind === "saved",
+  ).length;
+  const activeCount = episodes.filter(
+    (episode) => statuses.get(episode.id)?.kind === "active",
+  ).length;
+
+  function pick(list: Episode[]) {
+    setPicked(new Set(list.filter(selectable).map((episode) => episode.id)));
+  }
+  function toggle(id: string) {
+    setPicked((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  const presets: { label: string; list: Episode[] }[] = [
+    { label: "This episode", list: episodes.slice(at, at + 1) },
+    ...(episodes.length - at > 2
+      ? [
+          {
+            label: `Next ${Math.min(5, episodes.length - at)}`,
+            list: episodes.slice(at, at + 5),
+          },
+        ]
+      : []),
+    ...(at > 0 && episodes.length - at > 5
+      ? [{ label: "From here", list: episodes.slice(at) }]
+      : []),
+    { label: "All", list: episodes },
+  ];
+  const isPreset = (list: Episode[]) => {
+    const ids = list.filter(selectable);
+    return (
+      ids.length > 0 &&
+      ids.length === chosen.length &&
+      ids.every((episode) => picked.has(episode.id))
+    );
+  };
+
   async function download() {
     setSubmitting(true);
     try {
@@ -146,7 +250,7 @@ function DownloadSheet({
       );
       if (count) {
         toast(
-          `${count} ${count === 1 ? "episode" : "episodes"} added to downloads`,
+          `Downloading ${count} ${count === 1 ? "episode" : "episodes"}`,
           { action: { label: "View", href: "/downloads" } },
         );
         onClose();
@@ -160,206 +264,336 @@ function DownloadSheet({
       setSubmitting(false);
     }
   }
+
+  const blocked = !batch.length || !ready || !!inspection?.error || submitting;
+  const qualityLabel =
+    qualityChoices.find((choice) => choice.value === effectiveQuality)
+      ?.height ?? null;
+
   return (
-    <MediaSheet title="Download episodes" onClose={onClose}>
-      <p className="t-headline">{anime.title}</p>
-      <label className="block text-sm">
-        Episodes
-        <select
-          className="field mt-2 w-full"
-          aria-label="Episodes to download"
-          value={scope}
-          onChange={(event) => setScope(event.target.value)}
-        >
-          <option value="episode">Episode {episodes[at]?.number}</option>
-          <option value="next">
-            This and the next {Math.min(4, episodes.length - at - 1)}
-          </option>
-          <option value="all">
-            All {episodes.length} episodes in this title
-          </option>
-          <option value="range">Choose a range</option>
-        </select>
-      </label>
-      {scope === "range" && (
-        <div className="grid grid-cols-2 gap-3">
-          <label className="text-sm">
-            First episode
-            <select
-              aria-label="First episode"
-              value={from}
-              onChange={(event) => {
-                const value = Number(event.target.value);
-                setFrom(value);
-                setTo((last) => Math.max(value, last));
-              }}
-              className="field mt-2 w-full"
-            >
-              {episodes.map((episode, index) => (
-                <option key={episode.id} value={index + 1}>
-                  Episode {episode.number}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            Last episode
-            <select
-              aria-label="Last episode"
-              value={to}
-              onChange={(event) => setTo(Number(event.target.value))}
-              className="field mt-2 w-full"
-            >
-              {episodes.slice(from - 1).map((episode, index) => (
-                <option key={episode.id} value={from + index}>
-                  Episode {episode.number}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      )}
-      <label className="block text-sm">
-        Version
-        <select
-          className="field mt-2 w-full"
-          value={audio}
-          onChange={(event) => {
-            setAudio(event.target.value as "sub" | "dub");
-            setAudioTrack("");
-          }}
-        >
-          <option value="sub">Subtitled</option>
-          <option value="dub">Dubbed</option>
-        </select>
-      </label>
-      {!ready ? (
-        <p role="status" className="text-sm text-secondary">
-          Checking available quality and languages…
-        </p>
-      ) : inspection.error ? (
-        <div role="alert" className="space-y-2 text-sm text-secondary">
-          <p>{inspection.error}</p>
-          <button
-            className="btn btn-gray"
-            onClick={() => setAttempt((value) => value + 1)}
+    <MediaSheet
+      title="Download"
+      onClose={onClose}
+      footer={
+        <div className="flex gap-2">
+          <Link
+            href="/downloads"
+            className="btn btn-gray flex-none px-4"
+            aria-label="Manage downloads"
           >
-            Retry options
+            Manage
+          </Link>
+          <button
+            className="btn btn-primary min-w-0 flex-1"
+            disabled={blocked}
+            onClick={() => void download()}
+          >
+            <DownloadGlyph className="size-4 flex-none" />
+            <span className="truncate">
+              {submitting
+                ? "Starting…"
+                : !batch.length
+                  ? chosen.length || picked.size
+                    ? "Already downloaded"
+                    : "Pick episodes"
+                  : `Download ${batch.length} ${batch.length === 1 ? "episode" : "episodes"}${qualityLabel ? ` · ${qualityLabel}p` : ""}`}
+            </span>
           </button>
         </div>
-      ) : (
-        <>
-          {!!inspection.audioTracks.length && (
-            <label className="block text-sm">
-              Audio language
-              <select
-                aria-label="Download audio language"
-                className="field mt-2 w-full"
-                value={audioTrack}
-                onChange={(event) => setAudioTrack(event.target.value)}
-              >
-                <option value="">Use this version&apos;s default</option>
-                {inspection.audioTracks.map((track) => (
-                  <option key={track.name} value={track.name}>
-                    {track.name}
-                    {track.language ? ` (${track.language})` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          <label className="block text-sm">
-            Quality limit
-            <select
-              aria-label="Download quality limit"
-              disabled={!inspection.heights.length}
-              className="field mt-2 w-full"
-              value={effectiveQuality}
-              onChange={(event) =>
-                setQuality(
-                  event.target.value as VideoDownloadOptions["quality"],
-                )
-              }
+      }
+    >
+      <div>
+        <p className="t-headline">{anime.title}</p>
+        <p className="mt-1 text-sm text-secondary">
+          {episodes.length} {episodes.length === 1 ? "episode" : "episodes"}
+          {savedCount ? ` · ${savedCount} saved` : ""}
+          {activeCount ? ` · ${activeCount} downloading` : ""}
+        </p>
+      </div>
+
+      <Row label="Version">
+        <Segmented
+          label="Version"
+          value={audio}
+          onChange={(value) => {
+            setAudio(value);
+            setAudioTrack("");
+          }}
+          options={[
+            { value: "sub", label: "Subtitled" },
+            {
+              value: "dub",
+              label: "Dubbed",
+              disabled: anime.dub === 0 && initialAudio !== "dub",
+            },
+          ]}
+        />
+      </Row>
+
+      <Row label="Quality">
+        {!ready ? (
+          <div
+            role="status"
+            aria-label="Checking available qualities"
+            className="flex gap-2"
+          >
+            {[0, 1, 2].map((index) => (
+              <span
+                key={index}
+                className="h-11 flex-1 animate-pulse rounded-lg bg-fill"
+              />
+            ))}
+          </div>
+        ) : inspection.error ? (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-3 rounded-lg bg-fill px-4 py-3 text-sm"
+          >
+            <span className="text-secondary">
+              Couldn&apos;t reach this episode&apos;s video.
+            </span>
+            <button
+              className="btn btn-gray h-9 px-3 text-sm"
+              onClick={() => setAttempt((value) => value + 1)}
             >
-              {(
-                [
-                  ["480", "Up to 480p · smaller files"],
-                  ["720", "Up to 720p"],
-                  ["1080", "Up to 1080p"],
-                  ["2160", "Up to 4K"],
-                ] as const
-              ).map(([value, text]) => (
-                <option
-                  key={value}
-                  value={value}
-                  disabled={
-                    !inspection.heights.some(
-                      (height) => height <= Number(value),
-                    )
-                  }
-                >
-                  {text}
-                </option>
-              ))}
-              <option value="best">Highest source quality</option>
-            </select>
-          </label>
-          {!qualityAvailable && (
-            <p role="alert" className="text-sm text-secondary">
-              Choose a quality available for this episode.
-            </p>
-          )}
-          <p className="text-xs leading-5 text-secondary">
-            {inspection.heights.length
-              ? `This episode offers ${inspection.heights.map((height) => `${height}p`).join(", ")}. The highest rendition within your limit is saved.`
-              : "This source doesn't list selectable resolutions; its source rendition is saved."}{" "}
-            Higher resolutions use more storage. Languages may differ by
-            episode.
+              Retry
+            </button>
+          </div>
+        ) : qualityChoices.length === 1 ? (
+          <p className="text-sm text-secondary">
+            <span className="font-semibold text-label">
+              {qualityChoices[0].height}p
+            </span>{" "}
+            · the only quality this episode offers.
           </p>
-        </>
-      )}
-      <div className="space-y-2 rounded-xl bg-fill p-4 text-sm">
-        <p className="font-semibold">
-          {batch.length} {batch.length === 1 ? "episode" : "episodes"} to
-          download
-        </p>
-        <p className="text-secondary">
-          {chosen.length - pending.length
-            ? `${chosen.length - pending.length} already saved or queued. `
-            : ""}
-          Keep the app open. Downloads wait while video plays, then continue
-          when paused. Saved videos play from this device.
-        </p>
-        {pending.length > batch.length && (
-          <p className="text-secondary">
-            Up to 200 episodes per batch. Start another batch afterward for the
-            remaining episodes.
+        ) : qualityChoices.length ? (
+          <>
+            <Segmented
+              label="Quality"
+              value={effectiveQuality}
+              onChange={setQuality}
+              options={qualityChoices.map((choice) => ({
+                value: choice.value,
+                label: choice.height >= 2160 ? "4K" : `${choice.height}p`,
+              }))}
+            />
+            <p className="mt-2 text-xs text-secondary">
+              {effectiveQuality === qualityChoices[0].value &&
+              qualityChoices.length > 1
+                ? "Smallest files, saves storage."
+                : effectiveQuality ===
+                    qualityChoices[qualityChoices.length - 1].value
+                  ? "Best picture, uses the most storage."
+                  : "Good balance of picture and storage."}
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-secondary">
+            Saved at the source&apos;s quality.
           </p>
         )}
-      </div>
-      <button
-        className="btn btn-primary w-full"
-        disabled={
-          !batch.length ||
-          !ready ||
-          !qualityAvailable ||
-          !!inspection?.error ||
-          submitting
-        }
-        onClick={() => void download()}
-      >
-        {submitting
-          ? "Preparing offline player…"
-          : `Download ${batch.length} ${batch.length === 1 ? "episode" : "episodes"}`}
-      </button>
-      <Link href="/downloads" className="btn btn-gray w-full">
-        Manage downloads
-      </Link>
-      <p className="text-xs leading-5 text-secondary">
-        Direct VOD sources only. Unsupported live, DRM and byte-range streams
-        show an error. Each title has its own episode list; other seasons are
-        selected from Seasons.
-      </p>
+      </Row>
+
+      {ready && !inspection.error && inspection.audioTracks.length > 1 && (
+        <Row label="Audio">
+          <select
+            aria-label="Download audio language"
+            className="field w-full"
+            value={audioTrack}
+            onChange={(event) => setAudioTrack(event.target.value)}
+          >
+            <option value="">Default</option>
+            {inspection.audioTracks.map((track) => (
+              <option key={track.name} value={track.name}>
+                {track.name}
+                {track.language ? ` (${track.language})` : ""}
+              </option>
+            ))}
+          </select>
+        </Row>
+      )}
+
+      <section aria-label="Episodes">
+        <div className="mb-2 flex items-baseline justify-between gap-3">
+          <h3 className="text-sm font-semibold">Episodes</h3>
+          <span className="text-xs text-secondary">
+            {chosen.length ? `${chosen.length} selected` : "Tap to select"}
+          </span>
+        </div>
+        <div className="-mx-5 mb-3 flex gap-2 overflow-x-auto px-5 [scrollbar-width:none]">
+          {presets.map((preset) => (
+            <button
+              key={preset.label}
+              className="chip"
+              aria-pressed={isPreset(preset.list)}
+              onClick={() => pick(preset.list)}
+            >
+              {preset.label}
+            </button>
+          ))}
+          {!!chosen.length && (
+            <button className="chip" onClick={() => setPicked(new Set())}>
+              Clear
+            </button>
+          )}
+        </div>
+        <ul
+          ref={(grid) => {
+            // Start the grid at the episode being watched on long series.
+            const tile = grid?.children[at] as HTMLElement | undefined;
+            if (grid && tile && !grid.dataset.scrolled) {
+              grid.dataset.scrolled = "1";
+              grid.scrollTop = tile.offsetTop - grid.offsetTop - 8;
+            }
+          }}
+          className="grid max-h-64 grid-cols-5 gap-2 overflow-y-auto overscroll-contain sm:grid-cols-6"
+        >
+          {episodes.map((episode) => {
+            const status = statuses.get(episode.id);
+            const on = !status && picked.has(episode.id);
+            return (
+              <li key={episode.id}>
+                <EpisodeTile
+                  episode={episode}
+                  status={status}
+                  selected={on}
+                  current={episode.id === currentEpisode}
+                  onToggle={() => toggle(episode.id)}
+                />
+              </li>
+            );
+          })}
+        </ul>
+        {chosen.length > BATCH && (
+          <p className="mt-2 text-xs text-secondary">
+            The first {BATCH} start now. Come back for the rest afterward.
+          </p>
+        )}
+        <p className="mt-3 text-xs leading-5 text-secondary">
+          Downloads run while Kairo is open, and keep going (more slowly) while you watch.
+        </p>
+      </section>
     </MediaSheet>
+  );
+}
+
+function Row({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <p className="mb-2 text-sm font-semibold">{label}</p>
+      {children}
+    </div>
+  );
+}
+
+function Segmented<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: { value: T; label: string; disabled?: boolean }[];
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label={label}
+      className="flex gap-1 rounded-[10px] bg-fill p-1"
+    >
+      {options.map((option) => {
+        const on = option.value === value;
+        return (
+          <button
+            key={option.value}
+            role="radio"
+            aria-checked={on}
+            disabled={option.disabled}
+            onClick={() => onChange(option.value)}
+            className={`h-10 min-w-0 flex-1 truncate rounded-lg px-2 text-sm font-semibold transition-colors disabled:opacity-35 ${
+              on
+                ? "bg-label text-bg shadow-sm"
+                : "text-secondary hover:text-label"
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function EpisodeTile({
+  episode,
+  status,
+  selected,
+  current,
+  onToggle,
+}: {
+  episode: Episode;
+  status?: Status;
+  selected: boolean;
+  current: boolean;
+  onToggle: () => void;
+}) {
+  const label = `Episode ${episode.number}${
+    status?.kind === "saved"
+      ? ", downloaded"
+      : status?.kind === "active"
+        ? `, ${status.state === "paused" ? "paused" : "downloading"}`
+        : status?.kind === "unavailable"
+          ? ", not dubbed"
+          : ""
+  }`;
+  return (
+    <button
+      aria-label={label}
+      aria-pressed={status ? undefined : selected}
+      disabled={!!status}
+      onClick={onToggle}
+      className={`relative flex h-11 w-full items-center justify-center overflow-hidden rounded-lg text-sm font-semibold tabular-nums transition-colors ${
+        selected
+          ? "bg-label text-bg"
+          : status?.kind === "unavailable"
+            ? "bg-fill text-tertiary line-through opacity-50"
+            : status
+              ? "bg-fill text-secondary"
+              : "bg-fill text-label hover:bg-fill-2"
+      } ${current && !selected ? "ring-1 ring-label/60 ring-inset" : ""}`}
+    >
+      {episode.number}
+      {status?.kind === "saved" && (
+        <svg
+          viewBox="0 0 12 12"
+          aria-hidden
+          className="absolute top-1 right-1 size-3 text-success"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path d="m2.5 6.5 2.2 2 4.8-5" strokeLinecap="round" />
+        </svg>
+      )}
+      {status?.kind === "active" && (
+        <span
+          aria-hidden
+          className="absolute inset-x-0 bottom-0 h-[3px] bg-white/10"
+        >
+          <span
+            className={`block h-full ${status.state === "paused" ? "bg-secondary" : "bg-label"}`}
+            style={{ width: `${Math.max(6, status.progress * 100)}%` }}
+          />
+        </span>
+      )}
+    </button>
   );
 }

@@ -6,7 +6,10 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.RandomAccessFile;
 import java.net.HttpURLConnection;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -19,6 +22,7 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
@@ -29,7 +33,10 @@ import org.json.JSONObject;
 /**
  * Movie downloads saved on the device: a whole file (MP4) or an HLS stream saved segment by
  * segment with a local playlist. The list lives in movies/index.json next to the files.
- * One movie downloads at a time; HLS segments download four at once.
+ * One movie downloads at a time. HLS segments download eight at once, and a single file
+ * that allows ranged requests downloads as 8 MB pieces over six connections. Connections are
+ * kept open between requests (no disconnect() after a complete response), so each segment
+ * doesn't pay a new TCP and TLS handshake and TCP slow start again.
  */
 final class MovieDownloads {
     interface Listener {
@@ -316,6 +323,8 @@ final class MovieDownloads {
         File part = new File(dir, "video" + ext + ".part");
         File out = new File(dir, "video" + ext);
         set(o, "main", out.getName());
+        // A download started by an older version carries on as one stream.
+        if (!part.exists() && downloadFileInPieces(o, dir, out)) return;
         int attempts = 0;
         while (true) {
             check(id);
@@ -364,6 +373,223 @@ final class MovieDownloads {
         part.renameTo(out);
         set(o, "bytes", out.length());
         set(o, "total", out.length());
+    }
+
+    // ---------- one file, in pieces ----------
+
+    private static final long PIECE = 8L * 1024 * 1024;
+    private static final int FILE_CONNECTIONS = 6;
+    private static final int HLS_CONNECTIONS = 8;
+
+    /** HTTP status codes worth waiting out and retrying: the host is busy, not refusing. */
+    private static boolean retryable(int code) {
+        return code == 408 || code == 429 || code >= 500;
+    }
+
+    /**
+     * A single file split into 8 MB pieces fetched over several connections and written in
+     * place into one file. Hosts often cap each connection's speed; several connections add up.
+     * Finished pieces are listed in a side file, so a pause or crash resumes where it left off.
+     * Returns false (nothing written) when the host doesn't allow ranged requests.
+     */
+    private boolean downloadFileInPieces(JSONObject o, File dir, File out) throws Exception {
+        String id = o.optString("id");
+        String url = o.getString("url");
+        Map<String, String> h = headers(o);
+        File data = new File(dir, out.getName() + ".pieces");
+        File map = new File(dir, out.getName() + ".pieces.map");
+        long total = -1;
+        int probeAttempts = 0;
+        while (total < 0) {
+            check(id);
+            HttpURLConnection c = StreamSniffer.Http.open(url, h, "bytes=0-0");
+            try {
+                int code = c.getResponseCode();
+                if (code >= 400 && !retryable(code)) throw new Exception("HTTP " + code);
+                if (code >= 400) throw new java.io.IOException("HTTP " + code);
+                String range = c.getHeaderField("Content-Range");
+                int slash = range == null ? -1 : range.lastIndexOf('/');
+                String size = slash < 0 ? "" : range.substring(slash + 1).trim();
+                // A whole-file answer or an unknown length: one stream it is.
+                if (code != 206 || !size.matches("\\d{1,15}")) return false;
+                total = Long.parseLong(size);
+                try (InputStream in = c.getInputStream()) {
+                    //noinspection StatementWithEmptyBody
+                    while (in.read() >= 0) {}
+                }
+            } catch (java.io.IOException e) {
+                if (!online()) {
+                    waitForNetwork(id);
+                    continue;
+                }
+                if (++probeAttempts > 6) throw new Exception("The connection kept dropping. Try again on a better network.");
+                Thread.sleep(Math.min(20000, 1000L * probeAttempts));
+            } finally {
+                c.disconnect();
+            }
+        }
+        // Small files gain little from splitting.
+        if (total < 2 * PIECE) return false;
+        final long size = total;
+        int pieces = (int) ((size + PIECE - 1) / PIECE);
+        boolean[] finished = new boolean[pieces];
+        String saved = "";
+        try {
+            if (data.exists() && map.exists())
+                saved = new String(java.nio.file.Files.readAllBytes(map.toPath()), StandardCharsets.UTF_8);
+        } catch (Exception ignored) {
+        }
+        String[] lines = saved.split("\n", 2);
+        if (lines.length == 2 && lines[0].trim().equals(String.valueOf(total)) && lines[1].trim().length() == pieces) {
+            for (int i = 0; i < pieces; i++) finished[i] = lines[1].charAt(i) == '1';
+        } else {
+            //noinspection ResultOfMethodCallIgnored
+            data.delete();
+            //noinspection ResultOfMethodCallIgnored
+            map.delete();
+        }
+        long have = 0;
+        for (int i = 0; i < pieces; i++) if (finished[i]) have += pieceLength(i, total);
+        if (free() < total - have + 100L * 1024 * 1024)
+            throw new Exception("Not enough free space to finish this movie.");
+        set(o, "total", total);
+        set(o, "bytes", have);
+        changed(true);
+
+        AtomicLong bytes = new AtomicLong(have);
+        AtomicInteger cursor = new AtomicInteger();
+        AtomicBoolean stop = new AtomicBoolean();
+        Object mapLock = new Object();
+        try (RandomAccessFile raf = new RandomAccessFile(data, "rw")) {
+            if (raf.length() != total) raf.setLength(total);
+            FileChannel channel = raf.getChannel();
+            ExecutorService pool = Executors.newFixedThreadPool(FILE_CONNECTIONS);
+            try {
+                List<Future<?>> jobs = new ArrayList<>();
+                for (int w = 0; w < FILE_CONNECTIONS; w++) {
+                    jobs.add(pool.submit(() -> {
+                        try {
+                            while (!stop.get()) {
+                                int i = cursor.getAndIncrement();
+                                if (i >= pieces) return null;
+                                synchronized (mapLock) {
+                                    if (finished[i]) continue;
+                                }
+                                fetchPiece(id, url, h, channel, i * PIECE, pieceLength(i, size), bytes, stop, o);
+                                synchronized (mapLock) {
+                                    finished[i] = true;
+                                    writeMap(map, size, finished);
+                                }
+                            }
+                            return null;
+                        } catch (Exception e) {
+                            // One piece failing for good stops the others taking new pieces.
+                            stop.set(true);
+                            throw e;
+                        }
+                    }));
+                }
+                Throwable failure = null;
+                for (Future<?> f : jobs) {
+                    try {
+                        f.get();
+                    } catch (java.util.concurrent.ExecutionException e) {
+                        stop.set(true);
+                        // Workers stopped because another failed don't hide the real reason.
+                        if (failure == null && !(e.getCause() instanceof Stopped)) failure = e.getCause();
+                    }
+                }
+                if (failure instanceof Cancelled) throw (Cancelled) failure;
+                if (failure != null)
+                    throw failure instanceof Exception ? (Exception) failure : new Exception(String.valueOf(failure));
+            } finally {
+                stop.set(true);
+                pool.shutdownNow();
+                // Let transfers in flight stop before the file is closed under them.
+                pool.awaitTermination(30, java.util.concurrent.TimeUnit.SECONDS);
+            }
+        }
+        synchronized (mapLock) {
+            for (boolean done : finished) if (!done) throw new Exception("Some of the movie didn't download. Try again.");
+        }
+        if (!data.renameTo(out)) throw new Exception("Couldn't save the movie file.");
+        //noinspection ResultOfMethodCallIgnored
+        map.delete();
+        set(o, "bytes", out.length());
+        set(o, "total", out.length());
+        return true;
+    }
+
+    /** A piece abandoned because another piece failed. */
+    private static final class Stopped extends Exception {}
+
+    private static long pieceLength(int i, long total) {
+        return Math.min(PIECE, total - i * PIECE);
+    }
+
+    private static void writeMap(File map, long total, boolean[] finished) {
+        StringBuilder sb = new StringBuilder().append(total).append('\n');
+        for (boolean f : finished) sb.append(f ? '1' : '0');
+        try {
+            File tmp = new File(map.getPath() + ".tmp");
+            try (OutputStream w = new FileOutputStream(tmp)) {
+                w.write(sb.toString().getBytes(StandardCharsets.UTF_8));
+            }
+            //noinspection ResultOfMethodCallIgnored
+            tmp.renameTo(map);
+        } catch (Exception ignored) {
+            // The piece downloads again on resume.
+        }
+    }
+
+    private void fetchPiece(String id, String url, Map<String, String> h, FileChannel channel, long start, long length,
+                            AtomicLong bytes, AtomicBoolean stop, JSONObject o) throws Exception {
+        int attempts = 0;
+        while (true) {
+            check(id);
+            if (stop.get()) throw new Stopped();
+            HttpURLConnection c = StreamSniffer.Http.open(url, h, "bytes=" + start + "-" + (start + length - 1));
+            long written = 0;
+            boolean complete = false;
+            try {
+                int code = c.getResponseCode();
+                if (code >= 400 && !retryable(code)) throw new Exception("HTTP " + code);
+                if (code >= 400) throw new java.io.IOException("HTTP " + code);
+                if (code != 206) throw new Exception("The host stopped allowing partial downloads. Try again.");
+                try (InputStream in = c.getInputStream()) {
+                    byte[] buf = new byte[128 * 1024];
+                    int n;
+                    while (written < length && (n = in.read(buf, 0, (int) Math.min(buf.length, length - written))) > 0) {
+                        ByteBuffer bb = ByteBuffer.wrap(buf, 0, n);
+                        long at = start + written;
+                        while (bb.hasRemaining()) at += channel.write(bb, at);
+                        written += n;
+                        set(o, "bytes", bytes.addAndGet(n));
+                        check(id);
+                        if (stop.get()) throw new Stopped();
+                        changed(false);
+                    }
+                    if (written < length) throw new java.io.IOException("Connection closed early");
+                    // Reaching the end of the body hands the connection back for reuse.
+                    complete = in.read() < 0;
+                }
+                return;
+            } catch (java.io.IOException e) {
+                bytes.addAndGet(-written);
+                if (!online()) {
+                    waitForNetwork(id);
+                    continue;
+                }
+                if (++attempts > 6) throw new Exception("The connection kept dropping. Try again on a better network.");
+                Thread.sleep(Math.min(20000, 1000L * attempts));
+            } catch (Exception e) {
+                bytes.addAndGet(-written);
+                throw e;
+            } finally {
+                // A complete response keeps its connection open for the next piece.
+                if (!complete) c.disconnect();
+            }
+        }
     }
 
     // ---------- HLS ----------
@@ -474,7 +700,7 @@ final class MovieDownloads {
         set(o, "done", done.get());
         set(o, "bytes", bytes.get());
         changed(true);
-        ExecutorService pool = Executors.newFixedThreadPool(4);
+        ExecutorService pool = Executors.newFixedThreadPool(HLS_CONNECTIONS);
         try {
             List<Future<?>> jobs = new ArrayList<>();
             for (Resource r : resources) {
@@ -512,16 +738,19 @@ final class MovieDownloads {
             String range = r.length > 0 ? "bytes=" + r.offset + "-" + (r.offset + r.length - 1) : null;
             HttpURLConnection c = StreamSniffer.Http.open(r.url, h, range);
             File part = new File(r.file.getPath() + ".part");
+            boolean complete = false;
             try {
                 int code = c.getResponseCode();
-                if (code >= 400) throw new Exception("HTTP " + code);
+                if (code >= 400 && !retryable(code)) throw new Exception("HTTP " + code);
+                if (code >= 400) throw new java.io.IOException("HTTP " + code);
                 try (InputStream in = c.getInputStream(); OutputStream w = new FileOutputStream(part)) {
-                    byte[] buf = new byte[64 * 1024];
+                    byte[] buf = new byte[128 * 1024];
                     int n;
                     while ((n = in.read(buf)) > 0) {
                         w.write(buf, 0, n);
                         check(id);
                     }
+                    complete = true;
                 }
                 if (part.length() == 0) throw new java.io.IOException("Empty segment");
                 //noinspection ResultOfMethodCallIgnored
@@ -535,7 +764,9 @@ final class MovieDownloads {
                 if (++attempts > 6) throw new Exception("The connection kept dropping. Try again on a better network.");
                 Thread.sleep(Math.min(20000, 1000L * attempts));
             } finally {
-                c.disconnect();
+                // disconnect() closes the socket; a fully read response goes back to the
+                // connection pool so the next segment skips the TCP and TLS handshake.
+                if (!complete) c.disconnect();
             }
         }
     }
