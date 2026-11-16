@@ -8,6 +8,7 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
+import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
@@ -71,8 +72,15 @@ public class MovieDownloadService extends Service {
             downloads.addListener(listener);
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
             PowerManager.WakeLock lock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "kairo:movie-download");
+            // With the screen off, Wi-Fi drops into power save and downloads crawl; keep it awake.
+            WifiManager wifi = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+            @SuppressWarnings("deprecation")
+            WifiManager.WifiLock wifiLock = wifi == null ? null
+                : wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "kairo:downloads");
+            if (wifiLock != null) wifiLock.setReferenceCounted(false);
             new Thread(() -> {
                 lock.acquire(6 * 60 * 60 * 1000L);
+                if (wifiLock != null) wifiLock.acquire();
                 try {
                     while (true) {
                         downloads.runQueue();
@@ -89,6 +97,7 @@ public class MovieDownloadService extends Service {
                     }
                 } finally {
                     if (lock.isHeld()) lock.release();
+                    if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
                     downloads.removeListener(listener);
                     running = false;
                     stopForeground(STOP_FOREGROUND_REMOVE);

@@ -170,12 +170,17 @@ function harness(config = {}) {
       ? new Response("Missing", { status: 404 })
       : new Response(body);
   };
+  const page = new EventTarget();
+  page.visibilityState = "visible";
+  page.querySelectorAll = () => [];
   const globals = {
     window: target,
+    document: page,
     fetch,
     localStorage: storage,
     caches: { open: async () => cache },
     navigator: {
+      onLine: true,
       serviceWorker: { controller: {} },
       storage: {
         persist: async () => true,
@@ -425,7 +430,7 @@ test("a failed asset keeps a retryable plan and cached assets without claiming c
   const h = harness({
     fetch: async (url) =>
       url.endsWith("second.m4s") && fail
-        ? new Response("Unavailable", { status: 503 })
+        ? new Response("Gone", { status: 404 })
         : undefined,
   });
   h.engine.queueVideoDownloads(anime, [episode], options);
@@ -479,22 +484,62 @@ test("pause aborts workers, resume completes, and a reloaded queue starts paused
   assert.equal(Object.keys(h.engine.useVideoDownloads().saved).length, 1);
 });
 
-test("active playback yields new download network requests until playback releases the connection", async () => {
-  const h = harness();
+test("active playback narrows downloads to one connection instead of stopping them", async () => {
+  let inFlight = 0,
+    peak = 0;
+  const h = harness({
+    fetch: async (url) => {
+      if (!url.startsWith("https://cdn.test/") || url.endsWith(".m3u8")) return;
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await tick();
+      await tick();
+      inFlight--;
+    },
+  });
   h.engine.useVideoDownloads();
   h.target.dispatchEvent(
     new CustomEvent("mr:playback-active", { detail: true }),
   );
   h.engine.queueVideoDownloads(anime, [episode], options);
-  await tick();
-  await tick();
-  assert.equal(h.network.length, 0);
-  assert.equal(h.engine.useVideoDownloads().jobs[0].waitingForPlayback, true);
-  h.target.dispatchEvent(
-    new CustomEvent("mr:playback-active", { detail: false }),
-  );
   await settled(h.engine);
   assert.equal(Object.keys(h.engine.useVideoDownloads().saved).length, 1);
+  assert.equal(peak, 1, "only one media transfer at a time during playback");
+});
+
+test("without playback, media files download in parallel", async () => {
+  let inFlight = 0,
+    peak = 0;
+  const h = harness({
+    fetch: async (url) => {
+      if (!url.startsWith("https://cdn.test/") || url.endsWith(".m3u8")) return;
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await tick();
+      await tick();
+      inFlight--;
+    },
+  });
+  h.engine.queueVideoDownloads(anime, [episode], options);
+  await settled(h.engine);
+  assert.equal(Object.keys(h.engine.useVideoDownloads().saved).length, 1);
+  assert.ok(peak > 1, "segments overlap");
+});
+
+test("a transient segment failure is retried in place instead of failing the episode", async () => {
+  let failures = 2;
+  const h = harness({
+    fetch: async (url) =>
+      url.endsWith("first.m4s") && failures-- > 0
+        ? new Response("Busy", { status: 503 })
+        : undefined,
+  });
+  h.engine.queueVideoDownloads(anime, [episode], options);
+  // Two in-place retries back off for about three seconds in total.
+  for (let i = 0; i < 200 && !Object.keys(h.engine.useVideoDownloads().saved).length; i++)
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(Object.keys(h.engine.useVideoDownloads().saved).length, 1);
+  assert.equal(h.engine.useVideoDownloads().jobs.length, 0);
 });
 
 test("cancel removes the durable job and incomplete package without publishing completion", async () => {
