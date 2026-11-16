@@ -87,13 +87,13 @@ export function AppUpdate() {
   return (
     <div
       role="status"
-      className="site-chrome glass fixed inset-x-3 z-50 mx-auto flex max-w-md items-center gap-3 rounded-2xl px-4 py-3 shadow-lg"
+      className="site-chrome glass fixed inset-x-3 z-50 mx-auto flex max-w-md items-center gap-3 rounded-[10px] px-4 py-3 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.8)] ring-1 ring-hairline"
       style={{ bottom: "calc(var(--tabbar-h) + 12px)" }}
     >
       <span className="flex-1 text-[15px] leading-5">
-        <span className="block font-semibold">Update available</span>
+        <span className="block font-semibold">A new Kairo is ready</span>
         <span className="block text-[13px] text-secondary">
-          Version {update.version} is ready to install.
+          Version {update.version}. Your list and downloads stay.
         </span>
       </span>
       <button
@@ -105,7 +105,7 @@ export function AppUpdate() {
       </button>
       <a
         href={update.url}
-        className="pressable rounded-full bg-accent px-4 py-1.5 text-[15px] font-semibold text-on-accent"
+        className="pressable rounded-[8px] bg-accent px-4 py-2 text-[15px] font-semibold text-on-accent"
       >
         Update
       </a>
