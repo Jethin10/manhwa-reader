@@ -60,7 +60,7 @@ export function TitleCard({
           </span>
         )}
       </Poster>
-      <h3 className="t-footnote mt-2 line-clamp-1 font-semibold text-label">
+      <h3 className="t-footnote mt-2 line-clamp-1 font-medium text-label">
         {title}
       </h3>
       {(facts.length > 0 || !!score) && (

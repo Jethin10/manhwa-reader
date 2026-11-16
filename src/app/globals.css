@@ -20,8 +20,8 @@
   --color-on-accent: var(--on-accent, #1a1405);
   --color-success: #30d158;
   --color-warning: #ffd60a;
-  --font-sans: var(--font-archivo), system-ui, sans-serif;
-  --font-display: var(--font-archivo), system-ui, sans-serif;
+  --font-sans: var(--font-brand), system-ui, sans-serif;
+  --font-display: var(--font-brand), system-ui, sans-serif;
   --ease-apple: cubic-bezier(0.32, 0.72, 0, 1);
   --ease-spring: cubic-bezier(0.34, 1.36, 0.64, 1);
 }
@@ -115,52 +115,57 @@ img {
   display: none;
 }
 
-/* Type scale (1.25 ratio). Titles run expanded and heavy; small meta runs slightly condensed. */
+/*
+ * Type scale (1.25 ratio) in one grotesk. Premium streaming UIs stay neutral: titles are bold
+ * and only slightly wide with tight tracking; UI text is regular width; small meta narrows a touch.
+ */
 @utility t-large {
   font-family: var(--font-display);
   font-size: 40px;
   line-height: 42px;
-  font-weight: 800;
-  font-stretch: 118%;
-  letter-spacing: -0.03em;
+  font-weight: 700;
+  font-stretch: 108%;
+  letter-spacing: -0.032em;
 }
 @utility t-title1 {
   font-family: var(--font-display);
   font-size: 30px;
   line-height: 34px;
-  font-weight: 800;
-  font-stretch: 116%;
-  letter-spacing: -0.025em;
+  font-weight: 700;
+  font-stretch: 106%;
+  letter-spacing: -0.028em;
 }
 @utility t-title2 {
   font-family: var(--font-display);
   font-size: 22px;
   line-height: 26px;
-  font-weight: 750;
-  font-stretch: 112%;
-  letter-spacing: -0.015em;
+  font-weight: 650;
+  font-stretch: 104%;
+  letter-spacing: -0.02em;
 }
 @utility t-title3 {
   font-family: var(--font-display);
   font-size: 18px;
   line-height: 22px;
-  font-weight: 700;
-  font-stretch: 110%;
-  letter-spacing: -0.01em;
+  font-weight: 650;
+  font-stretch: 104%;
+  letter-spacing: -0.015em;
 }
 @utility t-headline {
   font-size: 16px;
   line-height: 22px;
   font-weight: 600;
-  letter-spacing: -0.005em;
+  letter-spacing: -0.01em;
 }
 @utility t-body {
   font-size: 16px;
   line-height: 25px;
+  letter-spacing: -0.005em;
 }
 @utility t-callout {
   font-size: 15px;
   line-height: 22px;
+  letter-spacing: -0.005em;
 }
 @utility t-sub {
   font-size: 14px;
@@ -173,13 +178,13 @@ img {
 @utility t-caption {
   font-size: 12px;
   line-height: 16px;
-  font-stretch: 94%;
+  font-stretch: 96%;
 }
 @utility t-eyebrow {
   font-size: 13px;
   line-height: 16px;
   font-weight: 600;
-  font-stretch: 108%;
+  letter-spacing: 0.005em;
 }
 
 /* Page gutters: phone margins, then 4% of the window on wide screens (no letterboxing). */
@@ -209,9 +214,8 @@ img {
   padding-inline: 20px;
   border-radius: 8px;
   font-size: 15px;
-  font-weight: 650;
-  font-stretch: 106%;
-  letter-spacing: -0.005em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   white-space: nowrap;
   transition:
     transform 0.2s var(--ease-apple),
@@ -413,8 +417,8 @@ form[role="search"]:has(input:focus-visible) {
 /* Title cards: Kairo's expanded, heavy display voice (titles on heroes and title pages). */
 .display {
   font-family: var(--font-display);
-  font-weight: 850;
-  font-stretch: 122%;
+  font-weight: 700;
+  font-stretch: 110%;
   letter-spacing: -0.035em;
 }
 
@@ -425,23 +429,26 @@ form[role="search"]:has(input:focus-visible) {
   text-wrap: pretty;
 }
 
-@keyframes shimmer {
-  100% {
-    transform: translateX(100%);
-  }
-}
 .skeleton {
-  position: relative;
-  overflow: hidden;
-  background: var(--color-card);
+  background-color: var(--color-card);
+  background-image: linear-gradient(
+    100deg,
+    transparent 35%,
+    rgba(170, 176, 240, 0.075) 50%,
+    transparent 65%
+  );
+  background-size: 200vw 100%;
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  animation: skeleton-sweep 1.9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
-.skeleton::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgba(160, 166, 230, 0.06), transparent);
-  animation: shimmer 1.6s infinite;
+@keyframes skeleton-sweep {
+  from {
+    background-position: 120vw 0;
+  }
+  to {
+    background-position: -120vw 0;
+  }
 }
 
 @keyframes fade-up {

@@ -532,11 +532,9 @@ export default function AdaptiveVideo({
           void el.requestPictureInPicture().catch(() => {});
       }
       if (k === "c" && el.textTracks.length) {
-        const showing = Array.from(el.textTracks).some(
-          (t) => t.mode === "showing",
-        );
+        const on = Array.from(el.textTracks).some((t) => t.mode !== "disabled");
         Array.from(el.textTracks).forEach((t, i) => {
-          t.mode = !showing && i === 0 ? "showing" : "disabled";
+          t.mode = !on && i === 0 ? "hidden" : "disabled";
         });
       }
       reveal();
@@ -563,8 +561,10 @@ export default function AdaptiveVideo({
       const tracks = Array.from(el.textTracks).filter(
         (t) => t.kind === "subtitles" || t.kind === "captions",
       );
+      // The browser turns the default track on as "showing"; take over drawing it.
+      for (const t of tracks) if (t.mode === "showing") t.mode = "hidden";
       setCaptionTracks(tracks.map((t) => t.label || t.language || "Subtitles"));
-      setCaption(tracks.findIndex((t) => t.mode === "showing"));
+      setCaption(tracks.findIndex((t) => t.mode !== "disabled"));
     };
     sync();
     el.textTracks.addEventListener("change", sync);
@@ -578,10 +578,38 @@ export default function AdaptiveVideo({
     const el = video.current;
     if (!el) return;
     Array.from(el.textTracks).forEach((t, i) => {
-      t.mode = i === index ? "showing" : "disabled";
+      t.mode = i === index ? "hidden" : "disabled";
     });
     setCaption(index);
   }
+
+  // The current subtitle lines. Drawn by the player (not the browser) so they sit above the
+  // controls while those are up, instead of under them at the very bottom of the picture.
+  const [cueText, setCueText] = useState("");
+  useEffect(() => {
+    const el = video.current;
+    const track =
+      el && caption >= 0
+        ? Array.from(el.textTracks).filter(
+            (t) => t.kind === "subtitles" || t.kind === "captions",
+          )[caption]
+        : undefined;
+    if (!track) {
+      setCueText("");
+      return;
+    }
+    const update = () => {
+      const lines = Array.from(track.activeCues ?? [])
+        .map((c) => ("text" in c ? String((c as VTTCue).text) : ""))
+        // Drop WebVTT markup (<i>, <b>, voice and class spans, timestamps).
+        .map((t) => t.replace(/<[^>]*>/g, "").trim())
+        .filter(Boolean);
+      setCueText(lines.join("\n"));
+    };
+    update();
+    track.addEventListener("cuechange", update);
+    return () => track.removeEventListener("cuechange", update);
+  }, [caption, captionTracks]);
 
   // Subtitle sizes are set for a full-size picture; a phone's inline player is far shorter.
   useEffect(() => {
@@ -740,7 +768,6 @@ export default function AdaptiveVideo({
         if (playing) setControls(false);
       }}
     >
-      <style>{`.adaptive-video::cue { font-size: ${cueSize}px; color: ${prefs.subtitleColor}; background-color: ${prefs.subtitleBackground ? "rgba(0,0,0,.75)" : "transparent"}; text-shadow: 0 1px 3px black; }`}</style>
       <video
         ref={video}
         autoPlay
@@ -808,6 +835,34 @@ export default function AdaptiveVideo({
           />
         ))}
       </video>
+
+      {cueText && (
+        <div
+          aria-live="off"
+          className="pointer-events-none absolute inset-x-0 z-[5] flex justify-center px-[6%] text-center transition-[bottom] duration-200"
+          style={{ bottom: visible && !finished ? 88 : "max(18px, 5%)" }}
+        >
+          <p
+            className="max-w-[min(90%,60rem)] leading-[1.32] font-semibold whitespace-pre-line [font-stretch:100%]"
+            style={{
+              fontSize: cueSize,
+              color: prefs.subtitleColor,
+              textShadow: "0 1px 3px #000, 0 0 2px #000",
+            }}
+          >
+            <span
+              className="rounded-[4px] px-[0.35em] py-[0.08em] [box-decoration-break:clone] [-webkit-box-decoration-break:clone]"
+              style={{
+                backgroundColor: prefs.subtitleBackground
+                  ? "rgba(0,0,0,.72)"
+                  : "transparent",
+              }}
+            >
+              {cueText}
+            </span>
+          </p>
+        </div>
+      )}
 
       {/* Tap once for controls, double tap the sides to seek, hold for 2x. */}
       <div

@@ -98,13 +98,13 @@ export function Billboard({ item }: { item: BillboardItem }) {
         <div className="max-w-xl">
           <p className="t-eyebrow text-[#f2c14e]">{item.kicker}</p>
           <h1
-            className={`mt-2 text-balance font-black tracking-[-0.035em] ${
+            className={`mt-2 text-balance font-bold tracking-[-0.038em] ${
               // Width steps down as titles get longer, so long names stay a block, not a wall.
               item.title.length > 40
-                ? "line-clamp-3 text-[28px] leading-[1.04] [font-stretch:108%] sm:text-[34px] lg:text-[40px]"
+                ? "line-clamp-3 text-[28px] leading-[1.04] [font-stretch:104%] sm:text-[34px] lg:text-[42px]"
                 : item.title.length > 22
-                  ? "line-clamp-3 text-[32px] leading-[1] [font-stretch:114%] sm:text-[44px] lg:text-[52px]"
-                  : "text-[42px] leading-[0.94] [font-stretch:125%] sm:text-[60px] lg:text-[76px]"
+                  ? "line-clamp-3 text-[34px] leading-[1] [font-stretch:108%] sm:text-[46px] lg:text-[56px]"
+                  : "text-[44px] leading-[0.95] [font-stretch:112%] sm:text-[64px] lg:text-[80px]"
             }`}
           >
             {item.title}
