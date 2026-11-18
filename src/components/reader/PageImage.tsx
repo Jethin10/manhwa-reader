@@ -10,6 +10,16 @@ import { setPageSize } from "./page-sizes";
 /** Fired by the page menu to reload one page: `detail` is the page's src. */
 export const RELOAD_PAGE = "mr:reload-page";
 
+/**
+ * The URL for a retry. Odd retries of a direct CDN link go through our image proxy instead,
+ * so a stuck connection to the CDN can't hold the page; even ones try the CDN again.
+ */
+function retrySrc(src: string, attempt: number) {
+  if (src.startsWith("https://") && attempt % 2 === 1)
+    return `/api/img?u=${encodeURIComponent(src)}&r=${attempt}`;
+  return retryUrl(src, attempt);
+}
+
 export function pageFilter(s: ReaderSettings) {
   const parts = [];
   if (s.brightness > 100) parts.push(`brightness(${s.brightness}%)`);
@@ -33,6 +43,7 @@ export const PageImage = memo(function PageImage({
   className = "",
   style,
   onSize,
+  onLoaded,
 }: {
   page: Page;
   index: number;
@@ -44,6 +55,7 @@ export const PageImage = memo(function PageImage({
   className?: string;
   style?: React.CSSProperties;
   onSize?: (index: number, w: number, h: number) => void;
+  onLoaded?: () => void;
 }) {
   const ref = useRef<HTMLImageElement | null>(null);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
@@ -111,8 +123,24 @@ export const PageImage = memo(function PageImage({
     };
   }, [wantsHd, hdReady, page.hd]);
 
+  // A download can stall without ever erroring (a hung CDN connection), and later pages then
+  // queue behind it until the chapter is reopened. If a page hasn't arrived in time, ask again
+  // on a fresh URL, from the proxy for direct CDN links, and offer Retry once that runs out.
+  useEffect(() => {
+    if (!active || loaded || failed) return;
+    const timer = setTimeout(
+      () => {
+        if (attempt < 3 + manual) setAttempt((a) => a + 1);
+        else setFailed(true);
+      },
+      12000 + attempt * 6000,
+    );
+    return () => clearTimeout(timer);
+  }, [active, loaded, failed, attempt, manual]);
+
   const done = (el: HTMLImageElement) => {
     setLoaded(true);
+    onLoaded?.();
     if (!natural) {
       setNatural(el.naturalWidth);
       setPageSize(page.src, el.naturalWidth, el.naturalHeight);
@@ -155,7 +183,7 @@ export const PageImage = memo(function PageImage({
           ? wantsHd && hdReady
             ? page.hd
             : attempt
-              ? retryUrl(page.src, attempt)
+              ? retrySrc(page.src, attempt)
               : page.src
           : undefined
       }

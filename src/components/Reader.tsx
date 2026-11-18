@@ -44,7 +44,7 @@ import {
 } from "./Icons";
 import { ReaderOptions, type ReaderSection } from "./PreferenceControls";
 import { PagedViewer, type PagerItem } from "./reader/PagedViewer";
-import { PageImage, RELOAD_PAGE } from "./reader/PageImage";
+import { PageImage, RELOAD_PAGE, Spinner } from "./reader/PageImage";
 import { isWide, pageSize, usePageSizes } from "./reader/page-sizes";
 
 type ChapterRef = Pick<Chapter, "id" | "number" | "title">;
@@ -1125,6 +1125,8 @@ const StripPage = memo(function StripPage({
     (_: number, w: number, h: number) => setRatio(w / h),
     [],
   );
+  const [loaded, setLoaded] = useState(false);
+  const onLoaded = useCallback(() => setLoaded(true), []);
   return (
     <div
       ref={(node) => register(index, node)}
@@ -1134,6 +1136,12 @@ const StripPage = memo(function StripPage({
       // aspect ratio keeps their height, so scrolling never jumps.
       style={{ aspectRatio: ratio ?? 2 / 3, contentVisibility: "auto" }}
     >
+      {/* A page still on its way shows a spinner, not an empty black gap. */}
+      {!loaded && (
+        <div className="absolute inset-x-0 top-0 grid h-full max-h-[70vh] place-items-center">
+          <Spinner />
+        </div>
+      )}
       <PageImage
         page={page}
         index={index}
@@ -1141,7 +1149,8 @@ const StripPage = memo(function StripPage({
         load={index < settings.preload}
         lazyMargin={Math.max(1600, settings.preload * 1200)}
         onSize={onSize}
-        className="block w-full"
+        onLoaded={onLoaded}
+        className="relative block w-full"
       />
     </div>
   );
