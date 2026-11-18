@@ -3,6 +3,7 @@ import type { Series, Stats } from "@/lib/catalog";
 import { coverSrc, coverSrcSet } from "@/lib/images";
 import { StarIcon } from "./Icons";
 import { RetryImg } from "./RetryImg";
+import { isColour } from "@/lib/colour";
 
 export function Rating({
   value,
@@ -74,6 +75,7 @@ export function SeriesCard({
       meta={[
         series.type && series.type.charAt(0).toUpperCase() + series.type.slice(1),
         series.lastChapter && `Ch. ${series.lastChapter}`,
+        isColour(series) && "Colour",
       ]}
       rating={stats?.rating ?? series.stats?.rating}
     />

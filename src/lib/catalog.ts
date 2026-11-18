@@ -11,6 +11,7 @@ import {
   type SourceId,
 } from "./sources";
 import { sameTitle } from "./titles";
+import { isColour, isColourEditionOf } from "./colour";
 import { errorText } from "./format";
 export type {
   BrowseOptions,
@@ -161,9 +162,19 @@ export async function browseSeries(
           "mangakatana",
           "mangapill",
         ] as const
-      ).filter((p) => p !== "mangapill" || !!opts.q)
+      ).filter(
+        // Only MangaDex can list colour editions without a title to look for.
+        (p) =>
+          (p !== "mangapill" || !!opts.q) &&
+          (!opts.colour || !!opts.q || p === "mangadex"),
+      )
     : [source];
-  const jobs = ids.map((p) => providers[p].browse(opts));
+  // Other sources have no colour filter: they search as usual and keep titles marked colored.
+  const jobs = ids.map((p) =>
+    providers[p].browse(
+      p === "mangadex" ? opts : { ...opts, colour: undefined },
+    ),
+  );
   // Mixed results show whatever arrived within 4 seconds, but never an empty page while a
   // source is still on its way. A slow source still fills its cache in the background, so the
   // next visit includes it.
@@ -174,7 +185,12 @@ export async function browseSeries(
       );
   const warnings: string[] = [];
   const good = results.flatMap((r, i) => {
-    if (r.status === "fulfilled") return [r.value];
+    if (r.status === "fulfilled")
+      return [
+        opts.colour && ids[i] !== "mangadex"
+          ? { ...r.value, series: r.value.series.filter(isColour) }
+          : r.value,
+      ];
     warnings.push(
       errorText(
         r.reason,
@@ -203,6 +219,23 @@ export async function browseSeries(
     warnings: all && series.length ? [] : warnings,
   };
 }
+/**
+ * Coloured editions of a black-and-white series, such as "Blue Lock (Fan Colored)".
+ * They are separate series on every source, so they are found by title and never merged.
+ */
+export async function findColourEditions(series: dex.Series) {
+  if (isColour(series)) return [];
+  const found = await browseSeries({
+    source: "all",
+    q: series.title,
+    type: "all",
+    order: "relevance",
+    colour: true,
+    limit: 12,
+  }).catch(() => ({ series: [] as dex.Series[] }));
+  return found.series.filter((s) => isColourEditionOf(s, series));
+}
+
 export const getSeries = (id: string) => of(id).series(id);
 export const getChapters = (id: string) => of(id).chapters(id);
 export const getAllUploads = (id: string) => {

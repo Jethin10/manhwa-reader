@@ -2,6 +2,7 @@
 import { cacheLife } from "next/cache";
 import { CATALOG_CACHE, CHAPTER_LIST_CACHE } from "./cache-profiles";
 import { img } from "./images";
+import { COLOUR_TAGS } from "./colour";
 
 const API = "https://api.mangadex.org";
 const UA = "manhwa-reader/0.1 (personal reader)";
@@ -202,7 +203,20 @@ export type BrowseOptions = {
     | "title";
   page?: number;
   limit?: number;
+  /** Only coloured editions (official, fan or full colour). */
+  colour?: boolean;
 };
+
+/**
+ * MangaDex applies one all-or-any mode to every included tag, so colour alone means
+ * "any colour tag", and colour with a genre narrows to that genre's Full Color titles.
+ */
+function tagFilter(opts: BrowseOptions) {
+  const tags = opts.tags?.length ? opts.tags : [];
+  if (!opts.colour) return { includedTags: tags.length ? tags : undefined };
+  if (!tags.length) return { includedTags: COLOUR_TAGS, includedTagsMode: "OR" };
+  return { includedTags: [...tags, COLOUR_TAGS[2]], includedTagsMode: "AND" };
+}
 
 export async function browseSeries(opts: BrowseOptions = {}) {
   "use cache: remote";
@@ -216,7 +230,7 @@ export async function browseSeries(opts: BrowseOptions = {}) {
     limit,
     offset: (page - 1) * limit,
     originalLanguage: langsFor(opts.type ?? "manhwa"),
-    includedTags: opts.tags?.length ? opts.tags : undefined,
+    ...tagFilter(opts),
     status: opts.status ? [opts.status] : undefined,
     availableTranslatedLanguage: [LANG],
     hasAvailableChapters: "true",

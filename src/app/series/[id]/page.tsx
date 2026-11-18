@@ -1,7 +1,14 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import type { Metadata } from "next";
-import { getChapters, getSeries, getStats, type Chapter } from "@/lib/catalog";
+import {
+  findColourEditions,
+  getChapters,
+  getSeries,
+  getStats,
+  type Chapter,
+  type Series,
+} from "@/lib/catalog";
 import { getMergedChapters } from "@/lib/unified";
 import { providerOf, sourceOf } from "@/lib/sources";
 import { coverSrc, coverSrcSet } from "@/lib/images";
@@ -165,6 +172,9 @@ async function LoadSeries({
 
         <div className="mt-10 grid gap-10 lg:mt-12 lg:grid-cols-[1fr_340px] lg:gap-12">
           <div className="min-w-0 space-y-10">
+            <Suspense fallback={null}>
+              <ColourEditions series={s} />
+            </Suspense>
             <section>
               <h2 className="t-title2 mb-3">About</h2>
               <Synopsis
@@ -303,6 +313,51 @@ async function MergedChapters({ series }: { series: SavedSeries }) {
       chapters={merged.chapters}
       showSource={multi}
     />
+  );
+}
+
+/** Coloured editions of this series (e.g. "Blue Lock (Fan Colored)"), when any source has one. */
+async function ColourEditions({ series }: { series: Series }) {
+  const editions = await findColourEditions(series).catch(() => []);
+  if (!editions.length) return null;
+  return (
+    <section>
+      <h2 className="t-title2 mb-3">Read in colour</h2>
+      <ul className="grouped">
+        {editions.map((e) => (
+          <li key={e.id} className="row-divider">
+            <Link
+              href={`/series/${e.id}`}
+              className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-white/[0.04] active:bg-white/[0.08]"
+            >
+              {e.cover && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={coverSrc(e.cover, 160)}
+                  alt=""
+                  loading="lazy"
+                  className="aspect-[2/3] w-10 shrink-0 rounded-[4px] object-cover"
+                />
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="t-callout block truncate">{e.title}</span>
+                <span className="t-footnote block text-secondary">
+                  {sourceOf(e.id)}
+                  {e.lastChapter ? ` · up to ch. ${e.lastChapter}` : ""}
+                </span>
+              </span>
+              <span className="t-caption rounded-full bg-accent/15 px-2 py-0.5 font-semibold text-accent">
+                Colour
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+      <p className="t-caption mt-2 px-4 text-tertiary">
+        Colour editions are separate uploads and often cover fewer chapters
+        than the original.
+      </p>
+    </section>
   );
 }
 

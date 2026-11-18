@@ -107,6 +107,7 @@ async function Browse({
       ? "relevance"
       : "followedCount";
   const page = Math.max(1, parseInt(one(sp.page)) || 1);
+  const colour = one(sp.colour) === "1";
 
   const [tags, result] = await Promise.all([
     source === "mangadex" ? getTags() : Promise.resolve([]),
@@ -118,6 +119,7 @@ async function Browse({
       status,
       order,
       page,
+      colour,
     }),
   ]);
   const stats = await getStats(result.series);
@@ -130,6 +132,7 @@ async function Browse({
     if (genre) u.set("genre", genre);
     if (status) u.set("status", status);
     if (orderRaw) u.set("order", orderRaw);
+    if (colour) u.set("colour", "1");
     if (p > 1) u.set("page", String(p));
     const s = u.toString();
     return `${type === "manga" ? "/manga" : "/series"}${s ? `?${s}` : ""}`;
@@ -137,23 +140,28 @@ async function Browse({
 
   const select =
     "t-footnote h-9 shrink-0 cursor-pointer appearance-none rounded-full bg-fill px-4 font-medium text-label outline-none transition hover:bg-fill-2 focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-default disabled:opacity-40";
-  const typeHref = (t: SeriesType) => {
-    const u = new URLSearchParams({ source });
+  const typeHref = (t: SeriesType, inColour = colour) => {
+    // Colour editions are listed by MangaDex, so turning colour on without a title starts there.
+    const src = inColour && !colour && !q && source !== "all" ? "mangadex" : source;
+    const u = new URLSearchParams({ source: src });
     if (q) u.set("q", q);
     if (t !== "manhwa") u.set("type", t);
     if (genre) u.set("genre", genre);
     if (status) u.set("status", status);
     if (orderRaw) u.set("order", orderRaw);
+    if (inColour) u.set("colour", "1");
     const s = u.toString();
     return `${t === "manga" ? "/manga" : "/series"}${s ? `?${s}` : ""}`;
   };
   const heading = q
-    ? `Results for “${q}”`
-    : ORDERS.find((o) => o.value === orderRaw)?.label === "Latest Update"
-      ? "New Releases"
-      : type === "manga"
-        ? "Manga"
-        : "Manhwa & comics";
+    ? `Results for “${q}”${colour ? " in colour" : ""}`
+    : colour
+      ? `${type === "manga" ? "Manga" : "Comics"} in colour`
+      : ORDERS.find((o) => o.value === orderRaw)?.label === "Latest Update"
+        ? "New Releases"
+        : type === "manga"
+          ? "Manga"
+          : "Manhwa & comics";
 
   const home = type === "manga" ? "/manga" : "/series";
   return (
@@ -186,12 +194,22 @@ async function Browse({
               {t.label}
             </Link>
           ))}
+          <span aria-hidden className="mx-1 w-px shrink-0 self-stretch bg-hairline" />
+          <Link
+            href={typeHref(type, !colour)}
+            aria-pressed={colour}
+            className="chip"
+            title="Only coloured editions: official, fan-coloured and full colour"
+          >
+            Colour
+          </Link>
         </nav>
         <form
           action={type === "manga" ? "/manga" : "/series"}
           className="no-scrollbar -mx-5 flex items-center gap-2 overflow-x-auto px-5 sm:mx-0 sm:flex-wrap sm:px-0"
         >
           <input type="hidden" name="type" value={type} />
+          {colour && <input type="hidden" name="colour" value="1" />}
           <select
             name="source"
             defaultValue={source}
@@ -271,6 +289,10 @@ async function Browse({
         <p className="grouped t-callout mt-10 p-14 text-center text-secondary">
           {source === "mangapill" && !q
             ? "MangaPill only lists titles you search for. Type a title above."
+            : colour && !q && source !== "mangadex" && source !== "all"
+              ? "This source can't list colour editions on its own. Type a title above, or pick MangaDex."
+            : colour
+              ? "No colour edition found. Try All sources, or a shorter title."
             : result.warnings.length
               ? "Nothing loaded from this source right now. Try All sources."
               : "No matches. Try a different title or filter."}
@@ -363,6 +385,20 @@ function rowsFor(type: "manhwa" | "manga"): Row[] {
       href: `${base}?source=${popular}${t}`,
       opts: { source: popular, type, order: "followedCount" },
     },
+    ...(type === "manga"
+      ? [
+          {
+            title: "In Colour",
+            href: `${base}?source=mangadex${t}&colour=1`,
+            opts: {
+              source: "mangadex",
+              type,
+              order: "followedCount",
+              colour: true,
+            },
+          } satisfies Row,
+        ]
+      : []),
     {
       title: "Latest Chapters",
       href: `${base}?order=latestUploadedChapter&source=mangadex${t}`,
