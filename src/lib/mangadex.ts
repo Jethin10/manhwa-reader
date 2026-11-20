@@ -49,6 +49,8 @@ export type Chapter = {
   externalUrl: string | null;
   readableAt: string;
   group: string | null;
+  /** Translation language for MangaDex uploads (for example `en` or `ja`). */
+  language?: string | null;
   /** Source name, set when chapters from several sources are merged into one list. */
   source?: string;
 };
@@ -180,6 +182,7 @@ function toChapter(c: RawChapter): Chapter {
     externalUrl: a.externalUrl ?? null,
     readableAt: a.readableAt,
     group: (group?.attributes?.name as string) ?? null,
+    language: a.translatedLanguage ?? null,
   };
 }
 
@@ -296,7 +299,7 @@ function chapterNum(c: Chapter) {
   return Number.isFinite(n) ? n : -1;
 }
 
-/** Every English upload, including duplicate releases of the same chapter by different groups. */
+/** Every MangaDex upload, including duplicate releases in different languages and groups. */
 export async function getAllUploads(mangaId: string): Promise<Chapter[]> {
   "use cache: remote";
   // Shared by every server instance; see CHAPTER_LIST_CACHE.
@@ -310,7 +313,6 @@ export async function getAllUploads(mangaId: string): Promise<Chapter[]> {
       {
         limit: 500,
         offset,
-        translatedLanguage: [LANG],
         contentRating: [...CONTENT_RATINGS, "erotica", "pornographic"],
         includes: ["scanlation_group"],
         "order[chapter]": "desc",
@@ -330,7 +332,12 @@ export async function getChapters(mangaId: string): Promise<Chapter[]> {
   for (const c of all) {
     const key = c.number ?? c.id;
     const prev = byNum.get(key);
-    if (!prev || (prev.externalUrl && !c.externalUrl)) byNum.set(key, c);
+    if (
+      !prev ||
+      (prev.externalUrl && !c.externalUrl) ||
+      (prev.language !== LANG && c.language === LANG)
+    )
+      byNum.set(key, c);
   }
   return [...byNum.values()].sort((a, b) => chapterNum(b) - chapterNum(a));
 }
