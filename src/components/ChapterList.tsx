@@ -405,7 +405,10 @@ function Row({
     x: 0,
     y: 0,
   });
-  const detail = [c.number && c.title ? c.title : null, c.group]
+  const language = c.language
+    ? new Intl.DisplayNames(["en"], { type: "language" }).of(c.language)
+    : null;
+  const detail = [c.number && c.title ? c.title : null, c.group, language]
     .filter(Boolean)
     .join(" · ");
   const body = (

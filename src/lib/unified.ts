@@ -89,6 +89,7 @@ function rank(c: Chapter, primary: string, measured: SourceQuality = {}) {
   const q = measured[providerOf(c.id)];
   const quality = !q ? qualityOf(c.id) * 10 : q.broken ? -100 : 100 + q.score;
   return (
+    (c.language === "en" ? 100_000 : 0) +
     (c.externalUrl ? 0 : 1_000_000) +
     quality * 2 +
     (providerOf(c.id) === providerOf(primary) ? 1 : 0)
