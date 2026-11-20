@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   cacheComponents: true,
+  experimental: { agentUpgrade: "security" },
   devIndicators: false,
   partialPrefetching: true,
   poweredByHeader: false,
