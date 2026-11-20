@@ -155,14 +155,17 @@ async function sourceQuality(id: string, uploads: Chapter[]): Promise<SourceQual
 export const getMergedChapters = cache(async (id: string) => {
   // Start immediately and attach rejection handling before waiting on mirror searches.
   const primary = Promise.allSettled([
-    withTimeout(getAllUploads(id), 20000, sourceOf(id)),
+    // MangaDex returns uploads in pages of 500. Long-running series such as Blue Lock
+    // can need several sequential requests, so a short page-load timeout silently drops
+    // the primary source's complete chapter list.
+    withTimeout(getAllUploads(id), 60000, sourceOf(id)),
   ]);
   const mirrors = await findMirrors(id).catch(() => [] as string[]);
   const ids = [id, ...mirrors];
   const [own, alternates] = await Promise.all([
     primary,
     Promise.allSettled(
-      mirrors.map((x) => withTimeout(getAllUploads(x), 8000, sourceOf(x))),
+      mirrors.map((x) => withTimeout(getAllUploads(x), 20000, sourceOf(x))),
     ),
   ]);
   const lists = [...own, ...alternates];

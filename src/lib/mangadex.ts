@@ -302,7 +302,9 @@ export async function getAllUploads(mangaId: string): Promise<Chapter[]> {
   // Shared by every server instance; see CHAPTER_LIST_CACHE.
   cacheLife(CHAPTER_LIST_CACHE);
   const all: Chapter[] = [];
-  for (let offset = 0; offset < 5000; offset += 500) {
+  // MangaDex caps offset + limit at 10000; continue to that ceiling so long
+  // series with many scanlation uploads are not truncated halfway through.
+  for (let offset = 0; offset < 10000; offset += 500) {
     const res = await api<{ data: RawChapter[]; total: number }>(
       `/manga/${mangaId}/feed`,
       {
